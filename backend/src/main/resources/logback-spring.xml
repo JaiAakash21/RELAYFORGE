@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Logging configuration.
+
+  Two appenders, chosen by profile:
+    * console  — human-readable, for local development.
+    * json     — one JSON object per line, for anything that ships logs to a
+                 collector. Structured output is what makes a multi-tenant log
+                 searchable by tenant and trace instead of grep-able by luck.
+
+  The MDC carries traceId, spanId, tenantId and deliveryId, so a single delivery
+  can be followed across the API, the outbox publisher and the worker.
+-->
+<configuration>
+  <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
+
+  <springProperty scope="context" name="appName" source="spring.application.name" defaultValue="relayforge"/>
+  <springProperty scope="context" name="role" source="relayforge.role" defaultValue="all"/>
+
+  <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+    <encoder>
+      <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} %highlight(%-5level) [%X{traceId:-},%X{spanId:-}] [tenant=%X{tenantId:-}] %cyan(%logger{32}) - %msg%n</pattern>
+    </encoder>
+  </appender>
+
+  <appender name="JSON" class="ch.qos.logback.core.ConsoleAppender">
+    <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+      <includeMdcKeyName>traceId</includeMdcKeyName>
+      <includeMdcKeyName>spanId</includeMdcKeyName>
+      <includeMdcKeyName>tenantId</includeMdcKeyName>
+      <includeMdcKeyName>deliveryId</includeMdcKeyName>
+      <includeMdcKeyName>authType</includeMdcKeyName>
+      <customFields>{"application":"${appName}","role":"${role}"}</customFields>
+      <!-- Stack traces are shortened: a full 200-frame Spring trace per error
+           is mostly framework noise and crowds out the lines that matter. -->
+      <throwableConverter class="net.logstash.logback.stacktrace.ShortenedThrowableConverter">
+        <maxDepthPerThrowable>30</maxDepthPerThrowable>
+        <maxLength>4096</maxLength>
+        <shortenedClassNameLength>40</shortenedClassNameLength>
+        <rootCauseFirst>true</rootCauseFirst>
+      </throwableConverter>
+    </encoder>
+  </appender>
+
+  <springProfile name="docker,prod">
+    <root level="INFO">
+      <appender-ref ref="JSON"/>
+    </root>
+  </springProfile>
+
+  <springProfile name="!docker &amp; !prod">
+    <root level="INFO">
+      <appender-ref ref="CONSOLE"/>
+    </root>
+  </springProfile>
+</configuration>

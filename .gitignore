@@ -1,0 +1,57 @@
+# ---- Java / Maven ----
+target/
+!.mvn/wrapper/maven-wrapper.jar
+.mvn/timing.properties
+*.class
+*.jar
+*.war
+hs_err_pid*
+replay_pid*
+
+# ---- Node / Next.js ----
+node_modules/
+.next/
+out/
+build/
+dist/
+.turbo/
+*.tsbuildinfo
+next-env.d.ts
+playwright-report/
+test-results/
+blob-report/
+.playwright/
+
+# ---- Environment & secrets ----
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+!infra/**/*.key.example
+secrets/
+
+# ---- IDE ----
+.idea/
+*.iml
+.vscode/
+*.swp
+.DS_Store
+
+# ---- Logs / local data ----
+logs/
+*.log
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.pgdata/
+local-data/
+
+# ---- Test / coverage ----
+coverage/
+.nyc_output/
+*.lcov
+
+# ---- Scratch ----
+tmp/
+.scratch/
