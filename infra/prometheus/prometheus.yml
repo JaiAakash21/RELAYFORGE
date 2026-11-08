@@ -1,0 +1,37 @@
+# =============================================================================
+# Prometheus scrape configuration for the RelayForge stack.
+# =============================================================================
+global:
+  # 15s: frequent enough that a delivery backlog is visible while it matters,
+  # infrequent enough that scraping is not itself a load on the application.
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    stack: relayforge
+
+rule_files:
+  - /etc/prometheus/alerts.yml
+
+scrape_configs:
+  # The API and the workers are scraped as separate targets of one job. They run
+  # the same image with different roles, and the `role` label the application
+  # attaches to every metric keeps them distinguishable — which matters, because
+  # delivery metrics come only from workers and request metrics only from the API.
+  - job_name: relayforge
+    metrics_path: /actuator/prometheus
+    scheme: http
+    static_configs:
+      - targets: ["api:8080"]
+        labels:
+          component: api
+      - targets: ["worker:8080"]
+        labels:
+          component: worker
+    # Workers are scaled with `--scale worker=N`, and only one of them answers
+    # on the service name. Honour the labels the application sends rather than
+    # overwriting them, so a scaled-out worker is still attributed correctly.
+    honor_labels: true
+
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]

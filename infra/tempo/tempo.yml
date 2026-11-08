@@ -1,0 +1,56 @@
+# =============================================================================
+# Tempo — trace storage for the local stack.
+#
+# The backend exports OTLP directly to Tempo, so no separate collector sits in
+# between. A collector earns its place when several services need fan-out,
+# sampling or redaction; with one backend it would be a hop that can fail for no
+# benefit.
+# =============================================================================
+server:
+  http_listen_port: 3200
+
+distributor:
+  receivers:
+    otlp:
+      protocols:
+        http:
+          endpoint: 0.0.0.0:4318
+        grpc:
+          endpoint: 0.0.0.0:4317
+
+ingester:
+  # Short windows so a trace is queryable within seconds of being emitted. A
+  # developer watching a Playground run should not wait minutes to see its span.
+  max_block_duration: 5m
+  complete_block_timeout: 1m
+
+compactor:
+  compaction:
+    # Local development only: traces are for debugging the run in front of you,
+    # not for retention.
+    block_retention: 24h
+
+storage:
+  trace:
+    backend: local
+    wal:
+      path: /var/tempo/wal
+    local:
+      path: /var/tempo/blocks
+
+# Derives RED metrics from spans, so service latency is available in Grafana
+# without the application exporting it twice.
+metrics_generator:
+  registry:
+    external_labels:
+      source: tempo
+  storage:
+    path: /var/tempo/generator/wal
+    remote_write:
+      - url: http://prometheus:9090/api/v1/write
+        send_exemplars: true
+
+overrides:
+  defaults:
+    metrics_generator:
+      processors: [service-graphs, span-metrics]

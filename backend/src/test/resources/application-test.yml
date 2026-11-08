@@ -1,0 +1,39 @@
+# Test profile. Container connection details are injected by
+# @DynamicPropertySource; this file holds everything that is the same for every
+# integration test.
+spring:
+  jpa:
+    hibernate:
+      # Still `validate`: the tests must run against the same Flyway-managed
+      # schema as production. Letting Hibernate create the schema here would
+      # mean the migrations were never actually exercised.
+      ddl-auto: validate
+  flyway:
+    enabled: true
+    clean-disabled: false
+
+relayforge:
+  role: all
+  delivery:
+    concurrency: 2
+    # Short, so a timeout test does not take ten seconds.
+    connect-timeout: PT2S
+    response-timeout: PT3S
+    lease-duration: PT10S
+  rate-limits:
+    # High enough that ordinary tests are never throttled; the rate-limit test
+    # sets its own values.
+    tenant-events-per-second: 10000
+    tenant-events-burst: 20000
+    api-key-events-per-second: 10000
+    api-key-events-burst: 20000
+    endpoint-deliveries-per-second: 1000
+    endpoint-deliveries-burst: 2000
+    auth-attempts-per-minute: 1000
+
+logging:
+  level:
+    root: WARN
+    com.relayforge: INFO
+    org.testcontainers: WARN
+    com.github.dockerjava: WARN

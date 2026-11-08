@@ -1,0 +1,31 @@
+# Build outputs and caches: these are produced inside the image, and copying a
+# host build in would both bloat the context and risk shipping stale artefacts.
+**/target/
+**/node_modules/
+**/.next/
+**/out/
+**/dist/
+
+# Secrets must never enter the build context — anything here is readable in the
+# image's layers even if a later step deletes it.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Version control and local tooling
+.git/
+.github/
+.idea/
+.vscode/
+**/*.iml
+
+# Test output and docs: not needed at runtime.
+**/playwright-report/
+**/test-results/
+**/coverage/
+docs/
+tests/
+*.md
+!README.md

@@ -1,0 +1,371 @@
+{
+  "uid": "relayforge-delivery",
+  "title": "RelayForge — Delivery pipeline",
+  "description": "Operational view of the RelayForge event pipeline: throughput, outcomes, retry behaviour, queue health and worker liveness. Per-tenant figures live in the RelayForge dashboard itself; these are deliberately tenant-agnostic so the Prometheus series count does not grow with the customer base.",
+  "tags": ["relayforge", "webhooks", "delivery"],
+  "timezone": "browser",
+  "editable": true,
+  "schemaVersion": 39,
+  "refresh": "10s",
+  "time": { "from": "now-1h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "component",
+        "label": "Component",
+        "type": "custom",
+        "query": "All,api,worker",
+        "current": { "text": "All", "value": ".*" },
+        "options": [
+          { "text": "All", "value": ".*", "selected": true },
+          { "text": "api", "value": "api", "selected": false },
+          { "text": "worker", "value": "worker", "selected": false }
+        ]
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "row",
+      "title": "Pipeline health",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Oldest ready delivery",
+      "description": "How long the oldest due-but-unstarted delivery has been waiting. This — not Kafka consumer lag — is what a user actually experiences, because it measures work that is ready and has nobody working on it.",
+      "gridPos": { "h": 5, "w": 5, "x": 0, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "relayforge-prometheus" },
+      "targets": [
+        {
+          "expr": "max(relayforge_queue_oldest_due_age_seconds)",
+          "legendFormat": "oldest due",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "decimals": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "#f0a126", "value": 30 },
+              { "color": "red", "value": 120 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "graphMode": "area",
+        "colorMode": "value",
+        "reduceOptions": { "calcs": ["lastNotNull"] }
+      }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Outbox backlog age",
+      "description": "Age of the oldest record committed to the outbox but not yet relayed to Kafka. Sustained growth here means a total delivery outage that nothing else would reveal — ingestion keeps succeeding and the event counts keep rising.",
+      "gridPos": { "h": 5, "w": 5, "x": 5, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "relayforge-prometheus" },
+      "targets": [
+        { "expr": "max(relayforge_outbox_oldest_age_seconds)", "legendFormat": "oldest unpublished", "refId": "A" }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "decimals": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "#f0a126", "value": 15 },
+              { "color": "red", "value": 60 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": { "graphMode": "area", "colorMode": "value", "reduceOptions": { "calcs": ["lastNotNull"] } }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Due backlog",
+      "description": "Deliveries that are due now and not yet being attempted.",
+      "gridPos": { "h": 5, "w": 4, "x": 10, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "relayforge-prometheus" },
+      "targets": [{ "expr": "sum(relayforge_queue_due_backlog)", "legendFormat": "due", "refId": "A" }],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "#f0a126", "value": 100 },
+              { "color": "red", "value": 1000 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": { "graphMode": "area", "colorMode": "value", "reduceOptions": { "calcs": ["lastNotNull"] } }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Leased by workers",
+      "description": "Deliveries a worker currently holds a lease on. Zero while traffic is flowing suggests workers are not consuming.",
+      "gridPos": { "h": 5, "w": 5, "x": 14, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "relayforge-prometheus" },
+      "targets": [{ "expr": "sum(relayforge_queue_in_progress)", "legendFormat": "in progress", "refId": "A" }],
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "options": { "graphMode": "area", "colorMode": "value", "reduceOptions": { "calcs": ["lastNotNull"] } }
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "Workers up",
+      "description": "Scrape targets responding. A drop here is the earliest sign of a worker deployment problem.",
+      "gridPos": { "h": 5, "w": 5, "x": 19, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "relayforge-prometheus" },
+      "targets": [{ "expr": "sum(up{job=\"relayforge\", component=\"worker\"})", "legendFormat": "workers", "refId": "A" }],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "green", "value": 1 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": { "graphMode": "none", "colorMode": "background", "reduceOptions": { "calcs": ["lastNotNull"] } }
+    },
+
+    {
+      "type": "row",
+      "title": "Throughput and outcomes",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 6 },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Delivery attempts by outcome",
+      "description": "Stacked, so total height is attempt volume and the bands show its composition. Successes sit at the bottom: failures then grow upward from a stable base, which is the shape people already read as 'something is wrong'.",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 7 },
+      "datasource": { "type": "prometheus", "uid": "relayforge-prometheus" },
+      "targets": [
+        { "expr": "sum(rate(relayforge_delivery_attempts_total{outcome=\"success\"}[$__rate_interval]))", "legendFormat": "delivered", "refId": "A" },
+        { "expr": "sum(rate(relayforge_delivery_attempts_total{outcome=\"retryable_failure\"}[$__rate_interval]))", "legendFormat": "retryable failure", "refId": "B" },
+        { "expr": "sum(rate(relayforge_delivery_attempts_total{outcome=\"terminal_failure\"}[$__rate_interval]))", "legendFormat": "terminal failure", "refId": "C" }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": { "drawStyle": "line", "fillOpacity": 25, "stacking": { "mode": "normal" }, "lineWidth": 1, "showPoints": "never" }
+        },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "delivered" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "#2dd47f" } }] },
+          { "matcher": { "id": "byName", "options": "retryable failure" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "#f0a126" } }] },
+          { "matcher": { "id": "byName", "options": "terminal failure" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "#f2556f" } }] }
+        ]
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "none" } }
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Delivery latency percentiles",
+      "description": "Computed from the Prometheus histogram, so unlike the in-app figures these are aggregated correctly across every worker instance.",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 7 },
+      "datasource": { "type": "prometheus", "uid": "relayforge-prometheus" },
+      "targets": [
+        { "expr": "histogram_quantile(0.50, sum by (le) (rate(relayforge_delivery_attempt_duration_seconds_bucket[$__rate_interval])))", "legendFormat": "p50", "refId": "A" },
+        { "expr": "histogram_quantile(0.95, sum by (le) (rate(relayforge_delivery_attempt_duration_seconds_bucket[$__rate_interval])))", "legendFormat": "p95", "refId": "B" },
+        { "expr": "histogram_quantile(0.99, sum by (le) (rate(relayforge_delivery_attempt_duration_seconds_bucket[$__rate_interval])))", "legendFormat": "p99", "refId": "C" }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "s", "custom": { "drawStyle": "line", "fillOpacity": 0, "lineWidth": 1.5, "showPoints": "never" } },
+        "overrides": []
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "desc" } }
+    },
+    {
+      "id": 12,
+      "type": "timeseries",
+      "title": "Response status classes",
+      "description": "Bucketed labels only — 2xx/4xx/5xx plus 429 and 503, which drive different operational responses. A receiver can return any integer, so the raw status is deliberately never a label.",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 15 },
+      "datasource": { "type": "prometheus", "uid": "relayforge-prometheus" },
+      "targets": [
+        { "expr": "sum by (status_class) (rate(relayforge_delivery_responses_total[$__rate_interval]))", "legendFormat": "{{status_class}}", "refId": "A" }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "reqps", "custom": { "drawStyle": "bars", "fillOpacity": 70, "stacking": { "mode": "normal" }, "lineWidth": 0 } },
+        "overrides": []
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
+    },
+    {
+      "id": 13,
+      "type": "timeseries",
+      "title": "Failures by error class",
+      "description": "A closed enum, so the series count is bounded at build time rather than by what receivers happen to do. RESPONSE_INCOMPLETE is worth watching: the request probably was processed, so a retry may duplicate it.",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 15 },
+      "datasource": { "type": "prometheus", "uid": "relayforge-prometheus" },
+      "targets": [
+        { "expr": "sum by (error_class) (rate(relayforge_delivery_errors_total[$__rate_interval]))", "legendFormat": "{{error_class}}", "refId": "A" }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "reqps", "custom": { "drawStyle": "line", "fillOpacity": 15, "stacking": { "mode": "normal" }, "lineWidth": 1, "showPoints": "never" } },
+        "overrides": []
+      },
+      "options": { "legend": { "displayMode": "table", "placement": "right", "calcs": ["lastNotNull", "max"] }, "tooltip": { "mode": "multi" } }
+    },
+
+    {
+      "type": "row",
+      "title": "Retry, recovery and the outbox",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 23 },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 20,
+      "type": "timeseries",
+      "title": "Retries scheduled vs dead letters",
+      "description": "Retries rising while dead letters stay flat is the retry engine doing its job. Both rising together means receivers are failing for longer than the attempt budget allows.",
+      "gridPos": { "h": 7, "w": 8, "x": 0, "y": 24 },
+      "datasource": { "type": "prometheus", "uid": "relayforge-prometheus" },
+      "targets": [
+        { "expr": "sum(rate(relayforge_deliveries_retries_scheduled_total[$__rate_interval]))", "legendFormat": "retries scheduled", "refId": "A" },
+        { "expr": "sum(rate(relayforge_deliveries_dead_lettered_total[$__rate_interval]))", "legendFormat": "dead-lettered", "refId": "B" },
+        { "expr": "sum(rate(relayforge_deliveries_replayed_total[$__rate_interval]))", "legendFormat": "manual replays", "refId": "C" }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "reqps", "custom": { "drawStyle": "line", "fillOpacity": 10, "lineWidth": 1.5, "showPoints": "never" } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "retries scheduled" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "#f0a126" } }] },
+          { "matcher": { "id": "byName", "options": "dead-lettered" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "#f2556f" } }] },
+          { "matcher": { "id": "byName", "options": "manual replays" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "#6366f1" } }] }
+        ]
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
+    },
+    {
+      "id": 21,
+      "type": "timeseries",
+      "title": "Outbox relay",
+      "description": "Published is the healthy path. Ack failures are the 'published to Kafka but the database update failed' case — the claim expires and the record is republished, which the idempotent consumer absorbs.",
+      "gridPos": { "h": 7, "w": 8, "x": 8, "y": 24 },
+      "datasource": { "type": "prometheus", "uid": "relayforge-prometheus" },
+      "targets": [
+        { "expr": "sum(rate(relayforge_outbox_published_total[$__rate_interval]))", "legendFormat": "published", "refId": "A" },
+        { "expr": "sum(rate(relayforge_outbox_publish_failures_total[$__rate_interval]))", "legendFormat": "publish failures", "refId": "B" },
+        { "expr": "sum(rate(relayforge_outbox_ack_failures_total[$__rate_interval]))", "legendFormat": "ack failures", "refId": "C" },
+        { "expr": "sum(relayforge_outbox_unpublished)", "legendFormat": "unpublished backlog", "refId": "D" }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "short", "custom": { "drawStyle": "line", "fillOpacity": 10, "lineWidth": 1.5, "showPoints": "never" } },
+        "overrides": []
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
+    },
+    {
+      "id": 22,
+      "type": "timeseries",
+      "title": "Duplicate messages and lease recovery",
+      "description": "Duplicates absorbed by the conditional claim are normal and prove at-least-once messaging is being converted into effectively-once processing. Lease recoveries should be near zero — a sustained rate means workers are crashing, and each recovery may resend a webhook the receiver already handled.",
+      "gridPos": { "h": 7, "w": 8, "x": 16, "y": 24 },
+      "datasource": { "type": "prometheus", "uid": "relayforge-prometheus" },
+      "targets": [
+        { "expr": "sum(rate(relayforge_deliveries_duplicate_messages_total[$__rate_interval]))", "legendFormat": "duplicates absorbed", "refId": "A" },
+        { "expr": "sum(rate(relayforge_deliveries_leases_recovered_total[$__rate_interval]))", "legendFormat": "leases recovered", "refId": "B" },
+        { "expr": "sum(rate(relayforge_deliveries_endpoint_throttled_total[$__rate_interval]))", "legendFormat": "endpoint throttled", "refId": "C" }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "reqps", "custom": { "drawStyle": "line", "fillOpacity": 10, "lineWidth": 1.5, "showPoints": "never" } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "leases recovered" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "#f2556f" } }] }
+        ]
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
+    },
+
+    {
+      "type": "row",
+      "title": "Ingestion",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 31 },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 30,
+      "type": "timeseries",
+      "title": "Event ingestion",
+      "description": "Deduplicated events are idempotency keys doing their job — a client retried safely rather than creating a second event.",
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 32 },
+      "datasource": { "type": "prometheus", "uid": "relayforge-prometheus" },
+      "targets": [
+        { "expr": "sum(rate(relayforge_events_accepted_total[$__rate_interval]))", "legendFormat": "accepted", "refId": "A" },
+        { "expr": "sum(rate(relayforge_events_deduplicated_total[$__rate_interval]))", "legendFormat": "deduplicated", "refId": "B" },
+        { "expr": "sum(rate(relayforge_events_rejected_total[$__rate_interval]))", "legendFormat": "rejected", "refId": "C" },
+        { "expr": "sum(rate(relayforge_deliveries_created_total[$__rate_interval]))", "legendFormat": "deliveries created (fan-out)", "refId": "D" }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "reqps", "custom": { "drawStyle": "line", "fillOpacity": 10, "lineWidth": 1.5, "showPoints": "never" } },
+        "overrides": []
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
+    },
+    {
+      "id": 31,
+      "type": "timeseries",
+      "title": "Rate limiting",
+      "description": "Throttled requests are the limiter protecting the platform. 'Unavailable' means Redis could not be reached — with fail-open enabled those requests went through unthrottled, which is a deliberate availability trade and is why it is graphed rather than hidden.",
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 32 },
+      "datasource": { "type": "prometheus", "uid": "relayforge-prometheus" },
+      "targets": [
+        { "expr": "sum(rate(relayforge_ratelimit_throttled_total[$__rate_interval]))", "legendFormat": "throttled", "refId": "A" },
+        { "expr": "sum(rate(relayforge_ratelimit_unavailable_total[$__rate_interval]))", "legendFormat": "limiter unavailable", "refId": "B" }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "reqps", "custom": { "drawStyle": "line", "fillOpacity": 10, "lineWidth": 1.5, "showPoints": "never" } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "limiter unavailable" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "#f2556f" } }] }
+        ]
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
+    },
+    {
+      "id": 32,
+      "type": "timeseries",
+      "title": "Queue lag — enqueue to first attempt",
+      "description": "Time between a delivery being handed to Kafka and a worker starting it. Distinct from the 'oldest ready delivery' gauge: this measures work that did get picked up, and is the honest measure of worker responsiveness.",
+      "gridPos": { "h": 7, "w": 24, "x": 0, "y": 39 },
+      "datasource": { "type": "prometheus", "uid": "relayforge-prometheus" },
+      "targets": [
+        { "expr": "histogram_quantile(0.50, sum by (le) (rate(relayforge_delivery_queue_lag_seconds_bucket[$__rate_interval])))", "legendFormat": "p50 queue lag", "refId": "A" },
+        { "expr": "histogram_quantile(0.95, sum by (le) (rate(relayforge_delivery_queue_lag_seconds_bucket[$__rate_interval])))", "legendFormat": "p95 queue lag", "refId": "B" }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "s", "custom": { "drawStyle": "line", "fillOpacity": 10, "lineWidth": 1.5, "showPoints": "never" } },
+        "overrides": []
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
+    }
+  ]
+}

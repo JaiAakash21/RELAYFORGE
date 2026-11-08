@@ -56,6 +56,12 @@ public interface WebhookEndpointRepository extends JpaRepository<WebhookEndpoint
      * second place. One definition of the matching rule is worth more here than
      * an index lookup we do not need. The GIN index on the array is still used
      * by the admin "who subscribes to X?" query.
+     *
+     * <p><b>Paused endpoints are included.</b> Pause means "hold my events",
+     * not "drop them": the delivery is created and the worker holds it until
+     * the endpoint resumes. Excluding paused endpoints here would silently lose
+     * every event published during a maintenance window, leaving no delivery
+     * row behind to replay.
      */
     @Query(
             """
@@ -63,9 +69,8 @@ public interface WebhookEndpointRepository extends JpaRepository<WebhookEndpoint
              WHERE e.tenantId = :tenantId
                AND e.deletedAt IS NULL
                AND e.active = true
-               AND e.pausedAt IS NULL
             """)
-    List<WebhookEndpoint> findDeliverableByTenant(@Param("tenantId") UUID tenantId);
+    List<WebhookEndpoint> findSubscribableByTenant(@Param("tenantId") UUID tenantId);
 
     long countByTenantIdAndDeletedAtIsNull(UUID tenantId);
 }

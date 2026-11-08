@@ -1,0 +1,294 @@
+# =============================================================================
+# RelayForge — complete local stack.
+#
+#   cp .env.example .env     # then replace every CHANGE_ME value
+#   docker compose up --build
+#
+# Dashboard   http://localhost:3000
+# API + docs  http://localhost:8080/swagger-ui.html
+# Grafana     http://localhost:3001
+# Prometheus  http://localhost:9090
+#
+# The API and the workers run the same image with different RELAYFORGE_ROLE
+# values. Splitting them is the point of the exercise: request volume and
+# delivery volume scale independently, and a worker stuck on a slow receiver
+# must not make the API slow to answer.
+# =============================================================================
+
+name: relayforge
+
+# ---------------------------------------------------------------------------
+# Shared fragments. The API and worker differ only in role and ports, so their
+# environment is defined once — two copies would drift the first time a setting
+# changed.
+# ---------------------------------------------------------------------------
+x-backend-env: &backend-env
+  SPRING_PROFILES_ACTIVE: docker
+  POSTGRES_HOST: postgres
+  POSTGRES_PORT: "5432"
+  POSTGRES_DB: ${POSTGRES_DB:-relayforge}
+  POSTGRES_USER: ${POSTGRES_USER:-relayforge}
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+  REDIS_HOST: redis
+  REDIS_PORT: "6379"
+  KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+  RELAYFORGE_JWT_SECRET: ${RELAYFORGE_JWT_SECRET:?generate with openssl rand -base64 64}
+  RELAYFORGE_ENCRYPTION_KEY: ${RELAYFORGE_ENCRYPTION_KEY:?generate with openssl rand -base64 32}
+  RELAYFORGE_EGRESS_PROFILE: ${RELAYFORGE_EGRESS_PROFILE:-dev}
+  RELAYFORGE_EGRESS_DEV_ALLOWLIST: ${RELAYFORGE_EGRESS_DEV_ALLOWLIST:-webhook-simulator,localhost,host.docker.internal}
+  RELAYFORGE_CORS_ORIGINS: ${RELAYFORGE_CORS_ORIGINS:-http://localhost:3000}
+  SIMULATOR_BASE_URL: http://webhook-simulator:8081
+  OTEL_EXPORTER_OTLP_ENDPOINT: http://tempo:4318
+  RELAYFORGE_TRACING_SAMPLE_RATE: ${RELAYFORGE_TRACING_SAMPLE_RATE:-1.0}
+
+x-backend-build: &backend-build
+  context: .
+  dockerfile: infra/docker/backend.Dockerfile
+
+# Keeps container logs bounded. Without this, Docker's json-file driver grows
+# without limit and a long-running demo eventually fills the disk.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  # ---------------------------------------------------------------- PostgreSQL
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-relayforge}
+      POSTGRES_USER: ${POSTGRES_USER:-relayforge}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      # Speeds up initdb; has no effect on an existing volume.
+      POSTGRES_INITDB_ARGS: "--data-checksums"
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      # -U and -d are both required: the default `pg_isready` checks the
+      # `postgres` database, which may answer before ours is ready.
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-relayforge} -d ${POSTGRES_DB:-relayforge}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+    logging: *logging
+
+  # --------------------------------------------------------------------- Redis
+  redis:
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    # Bounded memory with an LRU policy: every key Redis holds here is a rate
+    # limiter bucket that can be rebuilt, so evicting one costs a brief lapse in
+    # throttling rather than any data loss.
+    command: >
+      redis-server
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+      --save ""
+      --appendonly no
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    logging: *logging
+
+  # --------------------------------------------------------------------- Kafka
+  kafka:
+    image: apache/kafka:3.9.1
+    restart: unless-stopped
+    environment:
+      # KRaft mode: no ZooKeeper. One process is both broker and controller,
+      # which is right for a single-node development stack.
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_LISTENERS: INTERNAL://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093,EXTERNAL://0.0.0.0:29092
+      # Two advertised listeners because the broker is reached by two different
+      # names: `kafka` from inside the compose network, `localhost` from the
+      # host. A single listener would make one of those unreachable.
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:9092,EXTERNAL://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      # No rebalance delay: a single-node dev stack should form its group
+      # immediately rather than waiting the production-tuned three seconds.
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_LOG_RETENTION_HOURS: 24
+    ports:
+      - "${KAFKA_EXTERNAL_PORT:-29092}:29092"
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 10s
+      retries: 15
+      start_period: 40s
+    logging: *logging
+
+  # ----------------------------------------------------------------- API
+  api:
+    build: *backend-build
+    image: relayforge/backend:local
+    restart: unless-stopped
+    environment:
+      <<: *backend-env
+      RELAYFORGE_ROLE: api
+      RELAYFORGE_DEMO_SEED_ENABLED: ${RELAYFORGE_DEMO_SEED_ENABLED:-false}
+      RELAYFORGE_DEMO_EMAIL: ${RELAYFORGE_DEMO_EMAIL:-demo@relayforge.dev}
+      RELAYFORGE_DEMO_PASSWORD: ${RELAYFORGE_DEMO_PASSWORD:-}
+    ports:
+      - "${API_PORT:-8080}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    logging: *logging
+
+  # -------------------------------------------------------------- Worker
+  worker:
+    build: *backend-build
+    image: relayforge/backend:local
+    restart: unless-stopped
+    environment:
+      <<: *backend-env
+      RELAYFORGE_ROLE: worker
+      RELAYFORGE_DELIVERY_CONCURRENCY: ${RELAYFORGE_DELIVERY_CONCURRENCY:-4}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      # Not a hard dependency of the worker, but waiting means the API has
+      # already run Flyway, so the worker never starts against a schema that
+      # does not exist yet.
+      api:
+        condition: service_started
+    # Scale with: docker compose up --scale worker=3
+    # Workers coordinate through the database (leases) and Kafka (consumer
+    # group), so adding one needs no configuration change anywhere.
+    logging: *logging
+
+  # ---------------------------------------------------- Webhook simulator
+  webhook-simulator:
+    build:
+      context: .
+      dockerfile: infra/docker/simulator.Dockerfile
+    image: relayforge/webhook-simulator:local
+    restart: unless-stopped
+    # Deliberately not published to the host by default. It is a fault-injection
+    # target reachable only from inside this network; exposing it would make it
+    # an open endpoint on the developer's machine for no benefit.
+    expose:
+      - "8081"
+    logging: *logging
+
+  # ------------------------------------------------------------- Frontend
+  frontend:
+    build:
+      context: .
+      dockerfile: infra/docker/frontend.Dockerfile
+      args:
+        NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-http://localhost:3000}
+        NEXT_PUBLIC_GITHUB_URL: ${NEXT_PUBLIC_GITHUB_URL:-https://github.com/JaiAakash21/RELAYFORGE}
+    image: relayforge/frontend:local
+    restart: unless-stopped
+    environment:
+      # Server-side only. The browser never holds this, and never calls the API
+      # directly — requests go through the Next route handlers, which attach the
+      # token from the httpOnly cookie.
+      RELAYFORGE_API_INTERNAL_URL: http://api:8080
+      NODE_ENV: production
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+    depends_on:
+      api:
+        condition: service_started
+    logging: *logging
+
+  # ----------------------------------------------------------- Prometheus
+  prometheus:
+    image: prom/prometheus:v3.1.0
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=7d
+      - --web.enable-lifecycle
+    ports:
+      - "${PROMETHEUS_PORT:-9090}:9090"
+    volumes:
+      - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./infra/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus-data:/prometheus
+    depends_on:
+      - api
+    logging: *logging
+
+  # ---------------------------------------------------------------- Tempo
+  tempo:
+    image: grafana/tempo:2.7.0
+    restart: unless-stopped
+    command: ["-config.file=/etc/tempo/tempo.yml"]
+    # Receives OTLP directly from the backend, so no separate collector is
+    # needed for a single-backend stack.
+    expose:
+      - "4318"
+      - "3200"
+    volumes:
+      - ./infra/tempo/tempo.yml:/etc/tempo/tempo.yml:ro
+      - tempo-data:/var/tempo
+    logging: *logging
+
+  # -------------------------------------------------------------- Grafana
+  grafana:
+    image: grafana/grafana:11.5.0
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?set GRAFANA_ADMIN_PASSWORD in .env}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      # Opens straight on the RelayForge dashboard rather than Grafana's home
+      # page, so the useful view is one click from `docker compose up`.
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /etc/grafana/provisioning/dashboards/relayforge-delivery.json
+    ports:
+      - "${GRAFANA_PORT:-3001}:3000"
+    volumes:
+      - ./infra/grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      - prometheus
+      - tempo
+    logging: *logging
+
+volumes:
+  postgres-data:
+  kafka-data:
+  prometheus-data:
+  grafana-data:
+  tempo-data:
+
+# An explicit bridge network. Service names resolve as hostnames on it, which is
+# how `webhook-simulator` on the SSRF development allowlist refers to a real
+# destination without that allowlist naming an IP address.
+networks:
+  default:
+    name: relayforge
