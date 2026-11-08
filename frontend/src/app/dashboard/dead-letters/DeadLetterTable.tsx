@@ -3,7 +3,7 @@
 import { useCallback, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { CheckCircle2, Inbox, RotateCcw, X } from "lucide-react";
+import { CheckCircle2, RotateCcw, X } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card, CardFooter } from "@/components/ui/Card";
 import { Dialog } from "@/components/ui/Dialog";
