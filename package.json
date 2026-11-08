@@ -1,0 +1,15 @@
+{
+  "name": "relayforge-e2e",
+  "version": "1.0.0",
+  "private": true,
+  "description": "End-to-end tests for RelayForge. Lives at the repository root so the specs under tests/e2e can resolve their dependencies, and so the suite is not coupled to the frontend package.",
+  "scripts": {
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:report": "playwright show-report"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.50.1",
+    "@types/node": "22.13.1"
+  }
+}

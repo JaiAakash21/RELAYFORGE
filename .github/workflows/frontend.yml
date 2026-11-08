@@ -1,0 +1,60 @@
+name: Frontend
+
+on:
+  push:
+    branches: [main, "claude/**"]
+    paths:
+      - "frontend/**"
+      - ".github/workflows/frontend.yml"
+  pull_request:
+    paths:
+      - "frontend/**"
+      - ".github/workflows/frontend.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: frontend-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Lint, types and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        # `ci` rather than `install`: it installs exactly the lockfile and fails
+        # if package.json and the lockfile disagree, which is the whole point of
+        # having a lockfile.
+        run: npm ci --no-audit --no-fund
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Type check
+        # Separate from the build so a type error is reported as a type error,
+        # not buried in build output.
+        run: npm run typecheck
+
+      - name: Production build
+        run: npm run build
+        env:
+          NEXT_TELEMETRY_DISABLED: "1"
+          # The build only needs this to be syntactically valid; nothing is
+          # fetched from it at build time.
+          RELAYFORGE_API_INTERNAL_URL: http://api:8080
