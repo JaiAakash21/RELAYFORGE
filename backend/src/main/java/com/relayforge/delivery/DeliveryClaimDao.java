@@ -64,15 +64,15 @@ public class DeliveryClaimDao {
                 UPDATE deliveries
                    SET status           = 'IN_PROGRESS',
                        lease_owner      = :owner,
-                       lease_until      = :leaseUntil,
-                       first_attempt_at = COALESCE(first_attempt_at, :now),
-                       updated_at       = :now,
+                       lease_until      = CAST(:leaseUntil AS timestamptz),
+                       first_attempt_at = COALESCE(first_attempt_at, CAST(:now AS timestamptz)),
+                       updated_at       = CAST(:now AS timestamptz),
                        version          = version + 1
                  WHERE id = :id
                    AND (
                          (status IN ('PENDING', 'RETRY_SCHEDULED')
-                           AND (next_attempt_at IS NULL OR next_attempt_at <= :now))
-                      OR (status = 'IN_PROGRESS' AND lease_until IS NOT NULL AND lease_until <= :now)
+                           AND (next_attempt_at IS NULL OR next_attempt_at <= CAST(:now AS timestamptz)))
+                      OR (status = 'IN_PROGRESS' AND lease_until IS NOT NULL AND lease_until <= CAST(:now AS timestamptz))
                    )
                 """;
         MapSqlParameterSource params =
@@ -96,7 +96,7 @@ public class DeliveryClaimDao {
         String sql =
                 """
                 UPDATE deliveries
-                   SET lease_until = :leaseUntil
+                   SET lease_until = CAST(:leaseUntil AS timestamptz)
                  WHERE id = :id
                    AND lease_owner = :owner
                    AND status = 'IN_PROGRESS'
@@ -137,14 +137,14 @@ public class DeliveryClaimDao {
                     SELECT id
                       FROM deliveries
                      WHERE status IN ('PENDING', 'RETRY_SCHEDULED')
-                       AND (next_attempt_at IS NULL OR next_attempt_at <= :now)
-                       AND (queued_at IS NULL OR queued_at <= :staleBefore)
+                       AND (next_attempt_at IS NULL OR next_attempt_at <= CAST(:now AS timestamptz))
+                       AND (queued_at IS NULL OR queued_at <= CAST(:staleBefore AS timestamptz))
                      ORDER BY next_attempt_at NULLS FIRST, created_at
                      FOR UPDATE SKIP LOCKED
                      LIMIT :limit
                 )
                 UPDATE deliveries d
-                   SET queued_at = :now
+                   SET queued_at = CAST(:now AS timestamptz)
                   FROM due
                  WHERE d.id = due.id
              RETURNING d.id, d.tenant_id, d.event_id, d.endpoint_id, d.attempt_count
@@ -194,7 +194,7 @@ public class DeliveryClaimDao {
                       FROM deliveries
                      WHERE status = 'IN_PROGRESS'
                        AND lease_until IS NOT NULL
-                       AND lease_until <= :now
+                       AND lease_until <= CAST(:now AS timestamptz)
                      ORDER BY lease_until
                      FOR UPDATE SKIP LOCKED
                      LIMIT :limit
@@ -206,10 +206,10 @@ public class DeliveryClaimDao {
                                          END,
                        next_attempt_at = CASE
                                             WHEN d.attempt_count >= d.max_attempts THEN NULL
-                                            ELSE :nextAttemptAt
+                                            ELSE CAST(:nextAttemptAt AS timestamptz)
                                          END,
                        completed_at    = CASE
-                                            WHEN d.attempt_count >= d.max_attempts THEN :now
+                                            WHEN d.attempt_count >= d.max_attempts THEN CAST(:now AS timestamptz)
                                             ELSE NULL
                                          END,
                        queued_at       = NULL,
@@ -218,7 +218,7 @@ public class DeliveryClaimDao {
                        last_error      = 'Worker lease expired before the attempt was recorded; '
                                       || 'the request may or may not have reached the receiver.',
                        last_error_class = 'UNKNOWN',
-                       updated_at      = :now,
+                       updated_at      = CAST(:now AS timestamptz),
                        version         = d.version + 1
                   FROM expired
                  WHERE d.id = expired.id
@@ -253,8 +253,8 @@ public class DeliveryClaimDao {
                        queued_at          = NULL,
                        lease_owner        = NULL,
                        lease_until        = NULL,
-                       completed_at       = :now,
-                       updated_at         = :now,
+                       completed_at       = CAST(:now AS timestamptz),
+                       updated_at         = CAST(:now AS timestamptz),
                        version            = version + 1
                  WHERE id = :id
                    AND lease_owner = :owner
@@ -290,12 +290,12 @@ public class DeliveryClaimDao {
                        last_response_code = :responseCode,
                        last_error         = :error,
                        last_error_class   = :errorClass,
-                       next_attempt_at    = :nextAttemptAt,
+                       next_attempt_at    = CAST(:nextAttemptAt AS timestamptz),
                        queued_at          = NULL,
                        lease_owner        = NULL,
                        lease_until        = NULL,
                        completed_at       = NULL,
-                       updated_at         = :now,
+                       updated_at         = CAST(:now AS timestamptz),
                        version            = version + 1
                  WHERE id = :id
                    AND lease_owner = :owner
@@ -337,8 +337,8 @@ public class DeliveryClaimDao {
                        queued_at          = NULL,
                        lease_owner        = NULL,
                        lease_until        = NULL,
-                       completed_at       = :now,
-                       updated_at         = :now,
+                       completed_at       = CAST(:now AS timestamptz),
+                       updated_at         = CAST(:now AS timestamptz),
                        version            = version + 1
                  WHERE id = :id
                    AND lease_owner = :owner
@@ -378,12 +378,12 @@ public class DeliveryClaimDao {
                    SET status          = 'PENDING',
                        max_attempts    = attempt_count + :extraAttempts,
                        replay_count    = replay_count + 1,
-                       next_attempt_at = :now,
+                       next_attempt_at = CAST(:now AS timestamptz),
                        queued_at       = NULL,
                        lease_owner     = NULL,
                        lease_until     = NULL,
                        completed_at    = NULL,
-                       updated_at      = :now,
+                       updated_at      = CAST(:now AS timestamptz),
                        version         = version + 1
                  WHERE id = :id
                    AND tenant_id = :tenantId
@@ -405,7 +405,7 @@ public class DeliveryClaimDao {
                 """
                 SELECT COUNT(*) FROM deliveries
                  WHERE status IN ('PENDING', 'RETRY_SCHEDULED')
-                   AND (next_attempt_at IS NULL OR next_attempt_at <= :now)
+                   AND (next_attempt_at IS NULL OR next_attempt_at <= CAST(:now AS timestamptz))
                 """;
         Long value =
                 jdbc.queryForObject(
@@ -434,11 +434,11 @@ public class DeliveryClaimDao {
         String sql =
                 """
                 SELECT COALESCE(
-                         MAX(EXTRACT(EPOCH FROM (:now - COALESCE(next_attempt_at, created_at)))),
+                         MAX(EXTRACT(EPOCH FROM (CAST(:now AS timestamptz) - COALESCE(next_attempt_at, created_at)))),
                          0)
                   FROM deliveries
                  WHERE status IN ('PENDING', 'RETRY_SCHEDULED')
-                   AND (next_attempt_at IS NULL OR next_attempt_at <= :now)
+                   AND (next_attempt_at IS NULL OR next_attempt_at <= CAST(:now AS timestamptz))
                 """;
         Double value =
                 jdbc.queryForObject(sql, Map.of("now", Timestamp.from(now)), Double.class);

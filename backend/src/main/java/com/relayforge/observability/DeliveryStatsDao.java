@@ -66,7 +66,7 @@ public class DeliveryStatsDao {
                      tenant_id, bucket_start, attempts, successes, retryable_failures,
                      terminal_failures, duration_ms_sum, duration_ms_max, %s)
                  VALUES (
-                     :tenantId, :bucket, 1, :success, :retryable,
+                     :tenantId, CAST(:bucket AS timestamptz), 1, :success, :retryable,
                      :terminal, :duration, :duration, 1)
                  ON CONFLICT (tenant_id, bucket_start) DO UPDATE SET
                      attempts           = delivery_minute_stats.attempts + 1,
@@ -132,8 +132,8 @@ public class DeliveryStatsDao {
                        MAX(duration_ms_max)    AS duration_max
                   FROM delivery_minute_stats
                  WHERE tenant_id = :tenantId
-                   AND bucket_start >= :from
-                   AND bucket_start <  :to
+                   AND bucket_start >= CAST(:from AS timestamptz)
+                   AND bucket_start <  CAST(:to AS timestamptz)
                  GROUP BY bucket
                  ORDER BY bucket
                 """;
@@ -194,8 +194,8 @@ public class DeliveryStatsDao {
                        COALESCE(SUM(b_inf), 0)   AS b_inf
                   FROM delivery_minute_stats
                  WHERE tenant_id = :tenantId
-                   AND bucket_start >= :from
-                   AND bucket_start <  :to
+                   AND bucket_start >= CAST(:from AS timestamptz)
+                   AND bucket_start <  CAST(:to AS timestamptz)
                 """;
         Map<String, Object> row =
                 jdbc.queryForMap(

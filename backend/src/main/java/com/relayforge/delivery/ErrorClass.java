@@ -31,6 +31,15 @@ public enum ErrorClass {
     REDIRECT_NOT_FOLLOWED,
     /** Response exceeded the size we are willing to read. */
     RESPONSE_TOO_LARGE,
+    /**
+     * The receiver closed the connection before completing its response.
+     *
+     * <p>Distinguished from {@link #CONNECTION_REFUSED}: the connection was
+     * established and the request was almost certainly delivered, so the
+     * receiver may well have acted on it. A user debugging this needs to know
+     * that, because it means a retry can produce a duplicate on their side.
+     */
+    RESPONSE_INCOMPLETE,
     /** Anything else — kept as a single bucket rather than a free-text label. */
     UNKNOWN
 }

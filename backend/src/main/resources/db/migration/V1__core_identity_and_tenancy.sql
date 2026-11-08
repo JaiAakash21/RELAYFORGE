@@ -70,7 +70,7 @@ CREATE TABLE api_keys (
     id           UUID         PRIMARY KEY,
     tenant_id    UUID         NOT NULL REFERENCES tenants (id) ON DELETE CASCADE,
     name         VARCHAR(120) NOT NULL,
-    key_hash     CHAR(64)     NOT NULL,
+    key_hash     VARCHAR(64)  NOT NULL,
     prefix       VARCHAR(32)  NOT NULL,
     created_by   UUID         REFERENCES users (id) ON DELETE SET NULL,
     created_at   TIMESTAMPTZ  NOT NULL DEFAULT now(),
@@ -91,7 +91,7 @@ CREATE INDEX api_keys_tenant_idx ON api_keys (tenant_id, created_at DESC);
 CREATE TABLE refresh_tokens (
     id          UUID        PRIMARY KEY,
     user_id     UUID        NOT NULL REFERENCES users (id) ON DELETE CASCADE,
-    token_hash  CHAR(64)    NOT NULL,
+    token_hash  VARCHAR(64) NOT NULL,
     family_id   UUID        NOT NULL,
     issued_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
     expires_at  TIMESTAMPTZ NOT NULL,

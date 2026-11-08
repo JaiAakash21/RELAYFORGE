@@ -1,6 +1,5 @@
 package com.relayforge.endpoints;
 
-import io.hypersistence.utils.hibernate.type.array.StringArrayType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
@@ -11,7 +10,8 @@ import java.util.Arrays;
 import java.util.LinkedHashSet;
 import java.util.Set;
 import java.util.UUID;
-import org.hibernate.annotations.Type;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 /**
  * A tenant-registered destination for webhook deliveries.
@@ -48,8 +48,18 @@ public class WebhookEndpoint {
     @Column(length = 500)
     private String description;
 
-    @Type(StringArrayType.class)
-    @Column(name = "subscribed_event_types", columnDefinition = "text[]", nullable = false)
+    /**
+     * Stored as a PostgreSQL {@code text[]} using Hibernate's native array
+     * support, rather than as JSON.
+     *
+     * <p>A set of strings is genuinely an array, and {@code text[]} keeps it
+     * queryable with a GIN index and the {@code &&} overlap operator — which is
+     * what answers the admin question "which endpoints subscribe to this type?".
+     * Encoding it as JSON would work but would make that query a JSON path
+     * expression over a structure that has no nesting to justify it.
+     */
+    @JdbcTypeCode(SqlTypes.ARRAY)
+    @Column(name = "subscribed_event_types", nullable = false)
     private String[] subscribedEventTypes = new String[0];
 
     @Column(name = "encrypted_secret", nullable = false, columnDefinition = "text")

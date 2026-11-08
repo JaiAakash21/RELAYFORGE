@@ -190,6 +190,18 @@ public class WebhookHttpSender {
                     startedAt,
                     startNanos,
                     length(body));
+        } catch (org.apache.hc.core5.http.ConnectionClosedException
+                | org.apache.hc.core5.http.MalformedChunkCodingException e) {
+            // The connection was established and the request was sent, but the
+            // response was cut short. Retryable, and flagged distinctly because
+            // the receiver may already have processed the request.
+            return failure(
+                    ErrorClass.RESPONSE_INCOMPLETE,
+                    "The endpoint closed the connection before completing its response; the"
+                            + " request may already have been processed",
+                    startedAt,
+                    startNanos,
+                    length(body));
         } catch (ResponseTooLargeException e) {
             return failure(
                     ErrorClass.RESPONSE_TOO_LARGE, e.getMessage(), startedAt, startNanos, length(body));

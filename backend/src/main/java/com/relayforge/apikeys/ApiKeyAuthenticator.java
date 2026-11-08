@@ -131,7 +131,11 @@ public class ApiKeyAuthenticator {
         if (!trimmed.toLowerCase(Locale.ROOT).startsWith(ApiKeyService.KEY_PREFIX)) {
             return null;
         }
-        String[] parts = trimmed.split("_");
+        // Limit of 4, so everything after the third '_' is the secret. The
+        // secret is base64url and may legitimately contain '_' and '-'; an
+        // unlimited split would shred it and the prefix would be read from the
+        // wrong position.
+        String[] parts = trimmed.split("_", 4);
         // rf _ env _ prefix _ secret
         if (parts.length != 4 || parts[2].isEmpty() || parts[3].isEmpty()) {
             return null;

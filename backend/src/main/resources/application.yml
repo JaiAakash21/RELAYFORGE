@@ -68,14 +68,21 @@ spring:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
       password: ${REDIS_PASSWORD:}
+      # Bounded, and short: a rate-limit check sits in front of every ingestion
+      # request, so a slow Redis must fail fast into the configured fail-open
+      # posture rather than add seconds of latency to the hot path.
       timeout: 2s
       connect-timeout: 2s
       lettuce:
         pool:
-          enabled: true
-          max-active: 16
-          max-idle: 8
-          min-idle: 2
+          # Deliberately off. Lettuce's connection is thread-safe and
+          # multiplexes commands over a single Netty channel, so a pool adds
+          # object churn and a commons-pool2 dependency without adding
+          # throughput. Pooling only helps for commands that monopolise a
+          # connection — blocking pops, transactions, pub/sub — none of which
+          # this application uses: rate limiting is a single EVAL per check.
+          enabled: false
+        shutdown-timeout: 200ms
 
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
@@ -91,7 +98,13 @@ spring:
       fail-fast: false
 
   jackson:
-    default-property-inclusion: non_null
+    # Nulls are serialised, not omitted. In this API a null is information: an
+    # attempt with `responseStatus: null` means no HTTP response was ever
+    # received, which is a different fact from a field being absent. Omitting
+    # nulls would make every optional field indistinguishable from a missing one
+    # and force clients to guess. ApiError opts out separately, where empty
+    # detail maps genuinely add nothing.
+    default-property-inclusion: always
     serialization:
       write-dates-as-timestamps: false
       fail-on-empty-beans: false
