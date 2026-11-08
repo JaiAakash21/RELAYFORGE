@@ -55,3 +55,6 @@ coverage/
 # ---- Scratch ----
 tmp/
 .scratch/
+
+# Next.js build cache (large, regenerated)
+frontend/.next/
