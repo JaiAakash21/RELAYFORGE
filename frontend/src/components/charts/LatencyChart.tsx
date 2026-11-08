@@ -26,7 +26,9 @@ export function LatencyChart({ points }: { points: TimeseriesPoint[] }) {
   return (
     <div className="h-56 w-full">
       <ResponsiveContainer width="100%" height="100%">
-        <LineChart data={data} margin={{ top: 4, right: 8, left: -16, bottom: 0 }}>
+        {/* No negative left margin here: the Y labels carry a "ms" suffix and
+            need the full axis width, which a negative margin would clip. */}
+        <LineChart data={data} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
           <CartesianGrid stroke="#1a1a21" vertical={false} />
           <XAxis
             dataKey="time"
@@ -39,7 +41,7 @@ export function LatencyChart({ points }: { points: TimeseriesPoint[] }) {
             tick={{ fill: "#6c6c7c", fontSize: 10 }}
             stroke="#23232c"
             tickLine={false}
-            width={46}
+            width={58}
             tickFormatter={(value: number) => `${value}ms`}
           />
           <Tooltip

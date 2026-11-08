@@ -95,7 +95,7 @@ export function ApiKeysView({ initial }: { initial: ApiKey[] }) {
             onClick={() => setCreateOpen(true)}
             leadingIcon={<Plus className="h-3.5 w-3.5" aria-hidden />}
           >
-            Create key
+            New API key
           </Button>
         }
       />

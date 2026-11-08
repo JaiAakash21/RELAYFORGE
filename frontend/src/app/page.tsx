@@ -319,7 +319,7 @@ function ArchitectureSection() {
         </div>
 
         <div className="mt-8 grid gap-4 lg:grid-cols-2">
-          <div>
+          <div className="min-w-0">
             <h3 className="text-base font-medium text-content">Publish an event</h3>
             <p className="mt-1.5 text-sm leading-relaxed text-content-secondary">
               One call, authenticated with an API key. It returns as soon as the
@@ -338,7 +338,7 @@ function ArchitectureSection() {
   }'`}
             />
           </div>
-          <div>
+          <div className="min-w-0">
             <h3 className="text-base font-medium text-content">Verify the signature</h3>
             <p className="mt-1.5 text-sm leading-relaxed text-content-secondary">
               Compare in constant time, and reject timestamps outside a tolerance window
@@ -391,7 +391,7 @@ function PlaygroundSection() {
     <section className="relative overflow-hidden border-b border-border bg-surface/30">
       <div className="mx-auto w-full max-w-6xl px-4 py-16 sm:px-6 sm:py-20">
         <div className="grid items-center gap-10 lg:grid-cols-2">
-          <div>
+          <div className="min-w-0">
             <p className="rf-label">Signature feature</p>
             <h2 className="mt-2 text-2xl font-semibold tracking-tight text-content">
               The Reliability Playground
