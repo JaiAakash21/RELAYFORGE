@@ -13,8 +13,8 @@
  */
 export function ArchitectureDiagram() {
   return (
-    <div className="rf-card overflow-hidden">
-      <div className="overflow-x-auto">
+    <div className="rf-card min-w-0 overflow-hidden">
+      <div className="w-full overflow-x-auto">
         <svg
           viewBox="0 0 1000 420"
           className="h-auto w-full min-w-[720px]"

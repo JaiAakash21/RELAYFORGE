@@ -207,7 +207,9 @@ export function CodeBlock({
   className?: string;
 }) {
   return (
-    <div className={cn("relative rounded-lg border border-border bg-canvas", className)}>
+    // min-w-0 so a long code line scrolls inside the <pre> instead of widening
+    // whatever grid or flex item contains this block.
+    <div className={cn("relative min-w-0 rounded-lg border border-border bg-canvas", className)}>
       <div className="flex items-center justify-between border-b border-border-subtle px-3 py-1.5">
         <span className="rf-label">{language ?? "code"}</span>
         <CopyButton value={code} />

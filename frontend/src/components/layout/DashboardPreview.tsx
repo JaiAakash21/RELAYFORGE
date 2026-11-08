@@ -59,7 +59,7 @@ export function DashboardPreview() {
   ];
 
   return (
-    <div className="rf-card overflow-hidden shadow-overlay">
+    <div className="rf-card min-w-0 overflow-hidden shadow-overlay">
       {/* Window chrome, with the honesty label in it. */}
       <div className="flex items-center justify-between gap-3 border-b border-border-subtle bg-surface-2 px-3 py-2">
         <div className="flex items-center gap-1.5" aria-hidden>

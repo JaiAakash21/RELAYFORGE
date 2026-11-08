@@ -190,9 +190,16 @@ public class MetricsService {
                 .toList();
     }
 
+    /**
+     * Formats a window the way the caller asked for it.
+     *
+     * <p>24 hours stays "24h" rather than becoming "1d": the API accepts "24h"
+     * as a parameter, and echoing back a different string — even an equal one —
+     * makes the UI look as though it answered a question nobody asked.
+     */
     private static String humanWindow(Duration window) {
         long hours = window.toHours();
-        if (hours >= 24 && hours % 24 == 0) {
+        if (hours > 24 && hours % 24 == 0) {
             return (hours / 24) + "d";
         }
         if (hours >= 1) {
