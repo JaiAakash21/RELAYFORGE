@@ -27,7 +27,8 @@ public class ApiKeyService {
 
     static final String KEY_PREFIX = "rf";
     private static final String ENVIRONMENT_SEGMENT = "live";
-    private static final int PREFIX_BYTES = 6;
+    /** Characters in the non-secret lookup prefix. */
+    private static final int PREFIX_LENGTH = 8;
     private static final int SECRET_BYTES = 32;
 
     private final ApiKeyRepository repository;
@@ -58,7 +59,9 @@ public class ApiKeyService {
         String prefix;
         int attempts = 0;
         do {
-            prefix = Ids.randomToken(PREFIX_BYTES);
+            // Alphanumeric, not base64url: the prefix sits between '_'
+            // delimiters in the key and must not contain one itself.
+            prefix = Ids.randomAlphanumeric(PREFIX_LENGTH);
             attempts++;
             if (attempts > 5) {
                 throw new IllegalStateException(

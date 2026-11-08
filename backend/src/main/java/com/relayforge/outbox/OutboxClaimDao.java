@@ -82,7 +82,7 @@ public class OutboxClaimDao {
                      WHERE (status = 'PENDING')
                         OR (status = 'CLAIMED'
                             AND claim_expires_at IS NOT NULL
-                            AND claim_expires_at <= :now)
+                            AND claim_expires_at <= CAST(:now AS timestamptz))
                      ORDER BY created_at
                      FOR UPDATE SKIP LOCKED
                      LIMIT :limit
@@ -90,8 +90,8 @@ public class OutboxClaimDao {
                 UPDATE outbox_events o
                    SET status           = 'CLAIMED',
                        claimed_by       = :owner,
-                       claimed_at       = :now,
-                       claim_expires_at = :claimExpiresAt,
+                       claimed_at       = CAST(:now AS timestamptz),
+                       claim_expires_at = CAST(:claimExpiresAt AS timestamptz),
                        attempt_count    = o.attempt_count + 1
                   FROM claimable
                  WHERE o.id = claimable.id
@@ -145,7 +145,7 @@ public class OutboxClaimDao {
                 """
                 UPDATE outbox_events
                    SET status           = 'PUBLISHED',
-                       published_at     = :now,
+                       published_at     = CAST(:now AS timestamptz),
                        claim_expires_at = NULL,
                        last_error       = NULL
                  WHERE id IN (:ids)
@@ -189,7 +189,7 @@ public class OutboxClaimDao {
     public double oldestUnpublishedAgeSeconds(Instant now) {
         String sql =
                 """
-                SELECT COALESCE(MAX(EXTRACT(EPOCH FROM (:now - created_at))), 0)
+                SELECT COALESCE(MAX(EXTRACT(EPOCH FROM (CAST(:now AS timestamptz) - created_at))), 0)
                   FROM outbox_events
                  WHERE status IN ('PENDING', 'CLAIMED')
                 """;

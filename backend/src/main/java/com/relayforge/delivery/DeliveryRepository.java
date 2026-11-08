@@ -4,59 +4,26 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
-/** Entity-level access to deliveries. The atomic claim SQL lives in {@link DeliveryClaimDao}. */
-public interface DeliveryRepository extends JpaRepository<Delivery, UUID> {
+/**
+ * Entity-level access to deliveries.
+ *
+ * <p>The atomic claim SQL lives in {@link DeliveryClaimDao}; the optional-filter
+ * search predicates live in {@link DeliverySpecifications}.
+ */
+public interface DeliveryRepository
+        extends JpaRepository<Delivery, UUID>, JpaSpecificationExecutor<Delivery> {
 
     Optional<Delivery> findByIdAndTenantId(UUID id, UUID tenantId);
 
     List<Delivery> findByEventIdOrderByCreatedAtAsc(UUID eventId);
 
     List<Delivery> findByEventIdAndTenantIdOrderByCreatedAtAsc(UUID eventId, UUID tenantId);
-
-    /**
-     * Delivery list with optional filters, all collapsing to {@code TRUE} when
-     * absent so that one query serves every combination the UI can produce.
-     */
-    @Query(
-            """
-            SELECT d FROM Delivery d
-             WHERE d.tenantId = :tenantId
-               AND (:status     IS NULL OR d.status = :status)
-               AND (:endpointId IS NULL OR d.endpointId = :endpointId)
-               AND (:eventId    IS NULL OR d.eventId = :eventId)
-               AND (:from       IS NULL OR d.createdAt >= :from)
-               AND (:to         IS NULL OR d.createdAt <= :to)
-             ORDER BY d.createdAt DESC, d.id DESC
-            """)
-    Page<Delivery> search(
-            @Param("tenantId") UUID tenantId,
-            @Param("status") DeliveryStatus status,
-            @Param("endpointId") UUID endpointId,
-            @Param("eventId") UUID eventId,
-            @Param("from") Instant from,
-            @Param("to") Instant to,
-            Pageable pageable);
-
-    /** The dead-letter queue: exhausted deliveries, most recently failed first. */
-    @Query(
-            """
-            SELECT d FROM Delivery d
-             WHERE d.tenantId = :tenantId
-               AND d.status = com.relayforge.delivery.DeliveryStatus.FAILED
-               AND (:endpointId IS NULL OR d.endpointId = :endpointId)
-             ORDER BY d.updatedAt DESC
-            """)
-    Page<Delivery> findDeadLetters(
-            @Param("tenantId") UUID tenantId,
-            @Param("endpointId") UUID endpointId,
-            Pageable pageable);
 
     @Query(
             """

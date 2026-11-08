@@ -28,6 +28,26 @@ public final class Ids {
         return URL_ENCODER.encodeToString(buffer);
     }
 
+    /**
+     * Generates a random token from an unambiguous alphanumeric alphabet.
+     *
+     * <p>Base64url output contains {@code _} and {@code -}, which makes it unsafe
+     * for any value that is later embedded in a delimited string and split back
+     * out. Use this wherever the token has to survive that round trip — the API
+     * key prefix being the case in point.
+     *
+     * <p>{@code 0}, {@code O}, {@code 1}, {@code l} and {@code I} are excluded so
+     * a human reading a prefix off a screen cannot transcribe it wrongly.
+     */
+    public static String randomAlphanumeric(int length) {
+        final String alphabet = "abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+        StringBuilder sb = new StringBuilder(length);
+        for (int i = 0; i < length; i++) {
+            sb.append(alphabet.charAt(RANDOM.nextInt(alphabet.length())));
+        }
+        return sb.toString();
+    }
+
     /** Parses a UUID, turning a malformed one into a 404 rather than a 500. */
     public static UUID parse(String value, String resource) {
         try {

@@ -114,6 +114,10 @@ public class ResponseClassifier {
                     // valid and worth repeating.
                     case CONNECT_TIMEOUT, READ_TIMEOUT, CONNECTION_REFUSED, DNS_FAILURE ->
                             AttemptOutcome.RETRYABLE_FAILURE;
+                    // Retryable, but the request may already have been acted on.
+                    // Receivers deduplicate on X-RelayForge-Event-Id; this is the
+                    // clearest real example of why that header exists.
+                    case RESPONSE_INCOMPLETE -> AttemptOutcome.RETRYABLE_FAILURE;
                     // A destination our own policy forbids, a response too large
                     // to read, or a TLS failure will not resolve by repetition.
                     case BLOCKED_DESTINATION, RESPONSE_TOO_LARGE, TLS_FAILURE ->

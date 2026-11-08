@@ -12,7 +12,9 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -41,7 +43,14 @@ public class EventQueryService {
             Instant from,
             Instant to,
             Pageable pageable) {
-        return events.search(tenantId, eventType, search, from, to, pageable);
+        return events.findAll(
+                EventSpecifications.search(tenantId, eventType, search, from, to),
+                PageRequest.of(
+                        pageable.getPageNumber(),
+                        pageable.getPageSize(),
+                        // Stable ordering: the id tiebreak stops a row from
+                        // appearing on two pages when timestamps collide.
+                        Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("id"))));
     }
 
     @Transactional(readOnly = true)

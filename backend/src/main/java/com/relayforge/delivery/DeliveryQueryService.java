@@ -15,7 +15,9 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -60,8 +62,16 @@ public class DeliveryQueryService {
             Instant to,
             Pageable pageable) {
 
+        // Sorting is applied here rather than inside the predicate: a
+        // Specification describes WHAT to select, and the caller's Pageable
+        // describes how to order and slice it. Newest-first with a tiebreak on
+        // id keeps pagination stable when several rows share a timestamp —
+        // without it, a row can appear on two consecutive pages or on neither.
         Page<Delivery> page =
-                deliveries.search(tenantId, status, endpointId, eventId, from, to, pageable);
+                deliveries.findAll(
+                        DeliverySpecifications.search(
+                                tenantId, status, endpointId, eventId, from, to),
+                        withNewestFirst(pageable));
 
         // Two batch lookups instead of two per row. With 50 rows the naive
         // version is 100 extra queries; this is the classic N+1 and it is the
@@ -140,7 +150,10 @@ public class DeliveryQueryService {
     public Page<DeliveryDtos.DeadLetterResponse> deadLetters(
             UUID tenantId, UUID endpointId, Pageable pageable) {
 
-        Page<Delivery> page = deliveries.findDeadLetters(tenantId, endpointId, pageable);
+        Page<Delivery> page =
+                deliveries.findAll(
+                        DeliverySpecifications.deadLetters(tenantId, endpointId),
+                        withRecentlyFailedFirst(pageable));
         Map<UUID, WebhookEndpoint> endpointsById = loadEndpoints(page.getContent());
         Map<UUID, String> eventTypes = loadEventTypes(page.getContent());
 
@@ -210,6 +223,22 @@ public class DeliveryQueryService {
                                     return new com.relayforge.events.dto.EventDtos
                                             .DeliverySummary(s[0], s[1], s[2], s[3], s[4]);
                                 }));
+    }
+
+    /** Newest first, with the primary key as a stable tiebreak. */
+    private static Pageable withNewestFirst(Pageable pageable) {
+        return PageRequest.of(
+                pageable.getPageNumber(),
+                pageable.getPageSize(),
+                Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("id")));
+    }
+
+    /** Most recently failed first, for the dead-letter queue. */
+    private static Pageable withRecentlyFailedFirst(Pageable pageable) {
+        return PageRequest.of(
+                pageable.getPageNumber(),
+                pageable.getPageSize(),
+                Sort.by(Sort.Order.desc("updatedAt"), Sort.Order.desc("id")));
     }
 
     private Map<UUID, WebhookEndpoint> loadEndpoints(List<Delivery> page) {

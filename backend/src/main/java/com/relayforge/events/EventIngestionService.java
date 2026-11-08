@@ -129,7 +129,7 @@ public class EventIngestionService {
         }
 
         byte[] payloadBytes = measurePayload(request.payload());
-        validatePayload(request, payloadBytes.length);
+        validatePayload(request, payloadBytes.length, source);
 
         List<WebhookEndpoint> matching = resolveTargets(tenantId, request.eventType(), targetEndpointId);
         if (matching.size() > properties.ingestion().maxFanout()) {
@@ -320,7 +320,17 @@ public class EventIngestionService {
         }
     }
 
-    private void validatePayload(EventDtos.PublishRequest request, int payloadBytes) {
+    /**
+     * Validates the payload and the event type.
+     *
+     * @param source who is publishing. The reserved {@code relayforge.} prefix is
+     *     reserved <em>from callers</em>, so platform-generated events —
+     *     endpoint connectivity tests and Reliability Playground runs — are the
+     *     one thing entitled to use it. Enforcing the rule against the platform
+     *     itself would be enforcing it against the party doing the reserving.
+     */
+    private void validatePayload(
+            EventDtos.PublishRequest request, int payloadBytes, Event.Source source) {
         if (payloadBytes > properties.ingestion().maxPayloadBytes()) {
             metrics.recordEventRejected();
             throw new ValidationException(
@@ -336,6 +346,9 @@ public class EventIngestionService {
             throw new ValidationException(
                     "payload_not_structured",
                     "The event payload must be a JSON object or array, not a bare scalar");
+        }
+        if (source != Event.Source.API) {
+            return;
         }
         for (String reserved : properties.ingestion().reservedEventTypePrefixes()) {
             if (request.eventType().startsWith(reserved)) {
