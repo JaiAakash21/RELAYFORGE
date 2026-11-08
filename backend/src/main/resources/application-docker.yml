@@ -1,0 +1,24 @@
+# =============================================================================
+# Overrides applied inside Docker Compose. Activated with SPRING_PROFILES_ACTIVE=docker.
+# =============================================================================
+spring:
+  datasource:
+    url: jdbc:postgresql://postgres:5432/${POSTGRES_DB:relayforge}
+  data:
+    redis:
+      host: redis
+  kafka:
+    bootstrap-servers: kafka:9092
+
+relayforge:
+  playground:
+    simulator-base-url: http://webhook-simulator:8081
+  egress:
+    # The simulator is reachable by service name only. The private-address block
+    # stays in force for every other destination.
+    dev-allowlist: webhook-simulator,localhost,host.docker.internal
+
+management:
+  otlp:
+    tracing:
+      endpoint: http://tempo:4318/v1/traces

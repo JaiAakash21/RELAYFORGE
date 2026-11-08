@@ -1,0 +1,279 @@
+# =============================================================================
+# RelayForge backend configuration.
+#
+# Every secret is read from the environment. The defaults below are development
+# defaults only; `relayforge.jwt.secret` and `relayforge.crypto.encryption-key`
+# have no safe default and the application refuses to start if they are weak or
+# still carry the .env.example placeholder.
+# =============================================================================
+
+spring:
+  application:
+    name: relayforge
+  threads:
+    virtual:
+      # Virtual threads suit this workload: request handling is dominated by
+      # waiting on PostgreSQL and on slow third-party receivers, not by CPU.
+      enabled: true
+
+  datasource:
+    url: jdbc:postgresql://${POSTGRES_HOST:localhost}:${POSTGRES_PORT:5432}/${POSTGRES_DB:relayforge}
+    username: ${POSTGRES_USER:relayforge}
+    password: ${POSTGRES_PASSWORD:relayforge}
+    hikari:
+      # Sized for the work, not padded. Connections are held only for short
+      # transactions — the outbound HTTP call deliberately happens outside any
+      # transaction — so a large pool would add contention inside PostgreSQL
+      # without increasing throughput.
+      maximum-pool-size: ${DB_POOL_MAX:20}
+      minimum-idle: 5
+      connection-timeout: 10000
+      # Bounded lifetime so a long-lived connection cannot outlive a failover.
+      max-lifetime: 1800000
+      idle-timeout: 600000
+      pool-name: relayforge-pool
+      # Fail fast at startup if the database is unreachable, rather than
+      # accepting traffic and erroring on every request.
+      initialization-fail-timeout: 10000
+
+  jpa:
+    open-in-view: false   # An HTTP request must not hold a database session.
+    hibernate:
+      # NEVER `update` or `create`. Flyway owns the schema; letting Hibernate
+      # alter it would mean production DDL decided by whatever entity shape
+      # happens to be deployed.
+      ddl-auto: validate
+    properties:
+      hibernate:
+        jdbc:
+          batch_size: 50
+          time_zone: UTC
+        order_inserts: true
+        order_updates: true
+        # Surfaces an accidental lazy-load outside a transaction as an error in
+        # development instead of an N+1 in production.
+        enable_lazy_load_no_trans: false
+        query:
+          in_clause_parameter_padding: true
+          fail_on_pagination_over_collection_fetch: true
+
+  flyway:
+    enabled: true
+    baseline-on-migrate: false
+    validate-on-migrate: true
+    locations: classpath:db/migration
+
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      timeout: 2s
+      connect-timeout: 2s
+      lettuce:
+        pool:
+          enabled: true
+          max-active: 16
+          max-idle: 8
+          min-idle: 2
+
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      group-id: ${RELAYFORGE_KAFKA_GROUP:relayforge-delivery-workers}
+    listener:
+      observation-enabled: true
+    template:
+      observation-enabled: true
+    admin:
+      # A worker must still start when the broker is briefly unavailable; the
+      # database-backed dispatcher is what guarantees nothing is lost meanwhile.
+      fail-fast: false
+
+  jackson:
+    default-property-inclusion: non_null
+    serialization:
+      write-dates-as-timestamps: false
+      fail-on-empty-beans: false
+    deserialization:
+      fail-on-unknown-properties: false
+
+  servlet:
+    multipart:
+      enabled: false   # No file uploads anywhere in this API.
+
+server:
+  port: ${SERVER_PORT:8080}
+  # Caps the accepted request line and headers. The event payload cap is
+  # enforced in the service layer, where the parsed size is known.
+  max-http-request-header-size: 16KB
+  tomcat:
+    max-swallow-size: 2MB
+    max-http-form-post-size: 1MB
+    threads:
+      max: 200
+    connection-timeout: 20s
+  error:
+    # Never leak a stack trace or an internal message through the default error
+    # page; GlobalExceptionHandler produces every client-visible error.
+    include-message: never
+    include-stacktrace: never
+    include-binding-errors: never
+  shutdown: graceful
+  compression:
+    enabled: true
+    mime-types: application/json,text/plain
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: when-authorized
+      group:
+        # Liveness deliberately excludes the pipeline check: a delivery backlog
+        # must not make an orchestrator restart the instance, which would make
+        # the backlog worse.
+        liveness:
+          include: livenessState
+        readiness:
+          include: readinessState,db,redis
+  metrics:
+    tags:
+      application: relayforge
+      role: ${RELAYFORGE_ROLE:all}
+  observations:
+    key-values:
+      application: relayforge
+  tracing:
+    sampling:
+      probability: ${RELAYFORGE_TRACING_SAMPLE_RATE:1.0}
+  otlp:
+    tracing:
+      endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://localhost:4318}/v1/traces
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    operations-sorter: alpha
+    tags-sorter: alpha
+
+# =============================================================================
+# RelayForge application settings
+# =============================================================================
+relayforge:
+  role: ${RELAYFORGE_ROLE:all}
+
+  jwt:
+    secret: ${RELAYFORGE_JWT_SECRET:}
+    access-ttl: ${RELAYFORGE_JWT_ACCESS_TTL:PT15M}
+    refresh-ttl: ${RELAYFORGE_JWT_REFRESH_TTL:P7D}
+    issuer: relayforge
+
+  crypto:
+    encryption-key: ${RELAYFORGE_ENCRYPTION_KEY:}
+    # Long enough for a receiver to deploy a configuration change, short enough
+    # that rotating away from a leaked secret actually revokes it soon.
+    secret-rotation-grace: PT24H
+
+  delivery:
+    concurrency: ${RELAYFORGE_DELIVERY_CONCURRENCY:4}
+    # Must exceed the response timeout plus bookkeeping, or the reconciler would
+    # reclaim deliveries that are still legitimately in flight.
+    lease-duration: PT60S
+    connect-timeout: PT5S
+    response-timeout: PT10S
+    max-response-bytes: 65536
+    max-request-bytes: 1048576
+    max-pooled-connections: 200
+    # Bounded per route so one slow destination cannot monopolise the pool.
+    max-connections-per-route: 20
+    user-agent: RelayForge/1.0 (+https://github.com/JaiAakash21/RELAYFORGE)
+
+  retry:
+    max-attempts: ${RELAYFORGE_RETRY_MAX_ATTEMPTS:6}
+    initial-delay: PT5S
+    # 1 hour: long enough to ride out a real outage, short enough that the
+    # dead-letter queue remains a timely signal rather than a week-old one.
+    max-delay: PT1H
+    # Symmetric 20% jitter — spreads a thundering herd without changing the
+    # expected schedule. See BackoffCalculator for why not full jitter.
+    jitter-factor: 0.2
+    # All 5xx are retried by the classifier; these are the non-5xx additions.
+    retryable-status-codes: [408, 425, 429]
+    max-retry-after: PT15M
+    replay-extra-attempts: 3
+
+  outbox:
+    batch-size: 100
+    poll-interval: PT1S
+    # Comfortably longer than one publish cycle, so a healthy publisher is never
+    # treated as dead, and short enough that a crashed one recovers quickly.
+    claim-ttl: PT30S
+    max-publish-attempts: 10
+    dispatch-batch-size: 200
+    dispatch-interval: PT1S
+    # Must exceed lease-duration: a delivery a worker is still holding must not
+    # be re-enqueued as though its message were lost.
+    requeue-grace: PT90S
+    reconcile-interval: PT15S
+    retain-published-for: PT24H
+
+  egress:
+    profile: ${RELAYFORGE_EGRESS_PROFILE:dev}
+    dev-allowlist: ${RELAYFORGE_EGRESS_DEV_ALLOWLIST:webhook-simulator,localhost,host.docker.internal}
+    dns-timeout: PT2S
+    # An explicit short list. Anything else is an attempt to reach a service
+    # that is not a webhook receiver.
+    allowed-ports: [80, 443, 8080, 8081, 8443, 3000]
+
+  rate-limits:
+    tenant-events-per-second: 100
+    tenant-events-burst: 200
+    api-key-events-per-second: 50
+    api-key-events-burst: 100
+    endpoint-deliveries-per-second: 20
+    endpoint-deliveries-burst: 40
+    auth-attempts-per-minute: 20
+    # Availability over strictness: a Redis outage must not become a total
+    # ingestion outage. Every fail-open decision increments a counter.
+    fail-open: true
+
+  ingestion:
+    max-payload-bytes: 262144
+    max-fanout: 100
+    reserved-event-type-prefixes: ["relayforge."]
+
+  playground:
+    simulator-base-url: ${SIMULATOR_BASE_URL:http://localhost:8081}
+    max-attempts: 6
+    # Short delays so a demonstration completes while someone is watching.
+    initial-delay: PT3S
+    max-delay: PT30S
+
+  cors:
+    allowed-origins: ${RELAYFORGE_CORS_ORIGINS:http://localhost:3000}
+
+  demo:
+    seed-enabled: ${RELAYFORGE_DEMO_SEED_ENABLED:false}
+    email: ${RELAYFORGE_DEMO_EMAIL:demo@relayforge.dev}
+    password: ${RELAYFORGE_DEMO_PASSWORD:}
+    tenant-name: RelayForge Demo
+
+logging:
+  level:
+    root: INFO
+    com.relayforge: ${RELAYFORGE_LOG_LEVEL:INFO}
+    org.springframework.kafka: WARN
+    org.apache.kafka: WARN
+    # Hibernate SQL logging is off: it would log bound parameters, which include
+    # event payloads and, during an endpoint write, sealed secrets.
+    org.hibernate.SQL: WARN
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%X{traceId:-},%X{spanId:-}] [%X{tenantId:-}] %logger{36} - %msg%n"
