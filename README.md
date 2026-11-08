@@ -84,6 +84,13 @@ read back from the API.
 Or open the **Reliability Playground** in the dashboard and do the same
 interactively.
 
+![A completed Reliability Playground run](docs/screenshots/06-playground-run-complete.jpg)
+
+*A real run: HTTP 500, 500, 200 with the gap between attempts roughly doubling.
+The simulator's own counters (3 requests, 2 failed, 1 ok) agree with
+RelayForge's recorded attempt history. More in
+[docs/screenshots](docs/screenshots/).*
+
 ---
 
 ## The Reliability Playground
