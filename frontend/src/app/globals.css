@@ -1,0 +1,125 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * Base layer.
+ *
+ * Dark-first and dark-only: this is an instrument panel for engineers, and
+ * supporting a light theme properly would mean maintaining two sets of status
+ * colours that have to remain equally legible. One theme, done well, beats two
+ * done adequately. `color-scheme` tells the browser to render native scrollbars
+ * and form controls to match, which is what stops a stray white scrollbar.
+ */
+@layer base {
+  :root {
+    color-scheme: dark;
+    --font-sans: ui-sans-serif, system-ui, sans-serif;
+    --font-mono: ui-monospace, monospace;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  html {
+    @apply bg-canvas;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    @apply bg-canvas text-content font-sans text-base antialiased;
+    /* Prevents horizontal page scroll from a wide table; the table itself
+       scrolls inside its own container instead. */
+    overflow-x: hidden;
+  }
+
+  /* A single visible focus style, applied only for keyboard navigation.
+     `:focus-visible` rather than `:focus` so a mouse click does not leave a
+     ring behind, which is the usual reason people disable focus styles
+     altogether and break keyboard access. */
+  :focus-visible {
+    @apply outline-none ring-2 ring-accent ring-offset-2 ring-offset-canvas;
+  }
+
+  ::selection {
+    @apply bg-accent/30 text-content;
+  }
+
+  /* Tabular figures everywhere a number can change. Without this, a counter
+     ticking from 9 to 10 shifts the surrounding layout. */
+  .tabular,
+  table td,
+  table th {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Scrollbars styled to match the surfaces rather than the OS default. */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply rounded-full border-[3px] border-solid border-transparent bg-surface-4 bg-clip-content;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-border-strong bg-clip-content;
+  }
+
+  /* Honour a user's reduced-motion preference. The live indicators are
+     decorative; the data they sit next to is not. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+@layer components {
+  /* The recurring card surface. Border, not shadow, for separation. */
+  .rf-card {
+    @apply rounded-lg border border-border bg-surface;
+  }
+
+  .rf-card-hover {
+    @apply transition-colors duration-150 hover:border-border-strong hover:bg-surface-2;
+  }
+
+  /* Monospace treatment for identifiers. IDs are read character by character
+     and compared by eye, which proportional text makes unnecessarily hard. */
+  .rf-mono {
+    @apply font-mono text-xs tracking-tight;
+  }
+
+  /* Section label: small, uppercase, wide-tracked. Used above groups of
+     controls and above stat rows. */
+  .rf-label {
+    @apply text-2xs font-medium uppercase tracking-wider text-content-tertiary;
+  }
+
+  /* Skeleton shimmer for loading states. */
+  .rf-skeleton {
+    @apply relative overflow-hidden rounded bg-surface-2;
+  }
+  .rf-skeleton::after {
+    @apply absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-transparent via-white/[0.04] to-transparent;
+    content: "";
+  }
+
+  /* A single hairline grid, used behind the landing hero. Kept extremely low
+     contrast so it reads as texture rather than as content. */
+  .rf-grid-bg {
+    background-image:
+      linear-gradient(to right, rgb(35 35 44 / 0.35) 1px, transparent 1px),
+      linear-gradient(to bottom, rgb(35 35 44 / 0.35) 1px, transparent 1px);
+    background-size: 56px 56px;
+  }
+}
