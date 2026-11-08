@@ -153,9 +153,31 @@ public class WebhookEndpoint {
         return false;
     }
 
-    /** True when deliveries may currently be dispatched to this endpoint. */
+    /**
+     * True when a delivery may be <em>attempted</em> right now.
+     *
+     * <p>False while paused: the worker holds the delivery and retries after
+     * the pause rather than sending it.
+     */
     public boolean isDeliverable() {
         return active && pausedAt == null && deletedAt == null;
+    }
+
+    /**
+     * True when an incoming event should create a delivery for this endpoint.
+     *
+     * <p>Deliberately ignores {@code pausedAt}. Pausing means "hold my events
+     * while I do maintenance", so deliveries must still be created during a
+     * pause — the worker holds them and delivers once the endpoint resumes. If
+     * ingestion skipped paused endpoints instead, every event published during
+     * a maintenance window would be silently and permanently lost, with no
+     * delivery row left behind to replay.
+     *
+     * <p>A deleted or deactivated endpoint is different: there is no
+     * expectation that it comes back, so no delivery is created.
+     */
+    public boolean acceptsNewDeliveries() {
+        return active && deletedAt == null;
     }
 
     public void pause() {

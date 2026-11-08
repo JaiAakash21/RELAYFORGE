@@ -221,15 +221,34 @@ public class DestinationPolicy {
         return new Approved(uri, host, port, List.copyOf(approved));
     }
 
-    /** True when the host is exempt from the private-address block in the dev profile. */
+    /**
+     * True when the host is exempt from the private-address block in the dev
+     * profile.
+     *
+     * <p>Normalises both sides before comparing, rather than relying on the
+     * caller having done so. {@code example.com.} is a valid FQDN that a plain
+     * string comparison treats as a different host from {@code example.com},
+     * and an allowlist that can be sidestepped by a trailing dot is not an
+     * allowlist. The comparison is exact — never a prefix or suffix match — so
+     * {@code evil-localhost} cannot inherit {@code localhost}'s exemption.
+     */
     public boolean isDevAllowlisted(String host) {
-        if (config.profile() != RelayForgeProperties.Egress.Profile.DEV) {
+        if (config.profile() != RelayForgeProperties.Egress.Profile.DEV || host == null) {
             return false;
         }
-        String candidate = host.toLowerCase(Locale.ROOT);
+        String candidate = normaliseHostname(host);
         return config.devAllowlist().stream()
-                .map(entry -> entry.toLowerCase(Locale.ROOT))
+                .map(DestinationPolicy::normaliseHostname)
                 .anyMatch(candidate::equals);
+    }
+
+    /** Lower-cases a hostname and strips any trailing dots. */
+    private static String normaliseHostname(String host) {
+        String lower = host.trim().toLowerCase(Locale.ROOT);
+        while (lower.endsWith(".") && lower.length() > 1) {
+            lower = lower.substring(0, lower.length() - 1);
+        }
+        return lower;
     }
 
     // ----------------------------------------------------------------- checks
@@ -318,11 +337,7 @@ public class DestinationPolicy {
      * the kind of mismatch that turns a blocklist into a suggestion.
      */
     private static String normaliseHost(URI uri) {
-        String host = uri.getHost().toLowerCase(Locale.ROOT);
-        while (host.endsWith(".") && host.length() > 1) {
-            host = host.substring(0, host.length() - 1);
-        }
-        return host;
+        return normaliseHostname(uri.getHost());
     }
 
     private void checkBlockedHostname(String host) {

@@ -279,7 +279,8 @@ public class EventIngestionService {
                     .map(List::of)
                     .orElseGet(List::of);
         }
-        return endpoints.findDeliverableByTenant(tenantId).stream()
+        return endpoints.findSubscribableByTenant(tenantId).stream()
+                .filter(WebhookEndpoint::acceptsNewDeliveries)
                 .filter(endpoint -> endpoint.subscribesTo(eventType))
                 .toList();
     }

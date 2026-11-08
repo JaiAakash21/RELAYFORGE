@@ -1,0 +1,32 @@
+# Datasources are provisioned rather than clicked in, so `docker compose up`
+# yields a working Grafana with no manual setup.
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    uid: relayforge-prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    jsonData:
+      timeInterval: 15s
+      # Lets a metric exemplar jump straight to the trace that produced it,
+      # which is the single most useful link in the whole stack when debugging a
+      # slow delivery.
+      exemplarTraceIdDestinations:
+        - name: trace_id
+          datasourceUid: relayforge-tempo
+
+  - name: Tempo
+    type: tempo
+    uid: relayforge-tempo
+    access: proxy
+    url: http://tempo:3200
+    jsonData:
+      tracesToMetrics:
+        datasourceUid: relayforge-prometheus
+      serviceMap:
+        datasourceUid: relayforge-prometheus
+      nodeGraph:
+        enabled: true

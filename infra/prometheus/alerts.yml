@@ -1,0 +1,116 @@
+# =============================================================================
+# Alerting rules.
+#
+# Each rule targets a failure the dashboard would otherwise not make obvious.
+# Thresholds are development-scale; a real deployment would tune them to its own
+# traffic. What matters here is which conditions are worth alerting on at all.
+# =============================================================================
+groups:
+  - name: relayforge-pipeline
+    interval: 30s
+    rules:
+      # The most dangerous failure in the system: ingestion keeps returning 202
+      # and the event counts keep rising while nothing is actually relayed. Every
+      # other signal looks healthy during a total delivery outage.
+      - alert: OutboxNotDraining
+        expr: relayforge_outbox_oldest_age_seconds > 60
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "The transactional outbox is not draining"
+          description: >
+            The oldest unpublished outbox record is {{ $value | humanizeDuration }} old.
+            Events are still being accepted and stored — nothing is lost — but they are
+            not reaching the delivery workers. Usually an unreachable Kafka broker or a
+            stopped worker process.
+
+      # Measures what a user actually waits, rather than Kafka consumer lag.
+      - alert: DeliveryBacklogGrowing
+        expr: relayforge_queue_oldest_due_age_seconds > 120
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Deliveries are waiting longer than two minutes to start"
+          description: >
+            The oldest ready delivery has been waiting {{ $value | humanizeDuration }}.
+            Workers may be down, scaled too low, or stuck on slow receivers. Scale
+            workers up rather than restarting them — a restart makes a backlog worse.
+
+      - alert: HighDeliveryFailureRate
+        # Guarded on a minimum rate: a 100% failure rate over two deliveries is
+        # noise, and an alert that fires on noise is one people learn to ignore.
+        expr: |
+          (
+            sum(rate(relayforge_delivery_attempts_total{outcome!="success"}[10m]))
+            /
+            clamp_min(sum(rate(relayforge_delivery_attempts_total[10m])), 0.001)
+          ) > 0.25
+          and sum(rate(relayforge_delivery_attempts_total[10m])) > 0.1
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "More than a quarter of delivery attempts are failing"
+          description: >
+            {{ $value | humanizePercentage }} of attempts failed over the last 10
+            minutes. Check the endpoint performance table for a single bad receiver
+            before assuming a platform problem.
+
+      - alert: DeadLettersAccumulating
+        expr: increase(relayforge_deliveries_dead_lettered_total[1h]) > 10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Deliveries are exhausting their attempt budgets"
+          description: >
+            {{ $value }} deliveries dead-lettered in the last hour. They are replayable
+            with their history intact, but something is repeatedly failing.
+
+      # An outbox row parked as DEAD cannot resolve itself and needs a human.
+      - alert: OutboxRecordsParked
+        expr: relayforge_outbox_dead > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Outbox records could not be published and have been parked"
+          description: >
+            {{ $value }} record(s) failed to publish repeatedly and are in the DEAD
+            state. These will not retry on their own.
+
+      # Lease recovery working is good; it happening constantly means workers are
+      # dying repeatedly, and each recovery may duplicate a delivery.
+      - alert: WorkerLeasesExpiringRepeatedly
+        expr: increase(relayforge_deliveries_leases_recovered_total[15m]) > 5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Worker leases are expiring repeatedly"
+          description: >
+            {{ $value }} deliveries were recovered from expired leases in 15 minutes.
+            Workers are probably crashing or being OOM-killed. Each recovery may resend
+            a webhook the receiver already processed.
+
+      - alert: RateLimiterUnavailable
+        expr: increase(relayforge_ratelimit_unavailable_total[10m]) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Rate limiting is degraded"
+          description: >
+            Redis could not be reached for {{ $value }} rate-limit decisions. With
+            fail-open enabled those requests were allowed through unthrottled.
+
+      - alert: RelayForgeTargetDown
+        expr: up{job="relayforge"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "A RelayForge component is not responding to scrapes"
+          description: "{{ $labels.component }} at {{ $labels.instance }} is down."
