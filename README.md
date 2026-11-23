@@ -1,5 +1,7 @@
 # RelayForge
 
+[Open the live demo](https://assumption-tons-victorian-sunset.trycloudflare.com/) · Temporary AWS preview, scheduled to go offline on November 29, 2026 at about 6:49 PM IST.
+
 **Reliable event delivery infrastructure for applications that cannot afford to
 lose events.**
 
