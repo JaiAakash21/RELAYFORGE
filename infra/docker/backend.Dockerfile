@@ -21,12 +21,12 @@ RUN mvn -B -pl backend -am dependency:go-offline -DskipTests
 # ---- Stage 2: build ----------------------------------------------------------
 FROM maven:3.9-eclipse-temurin-21 AS build
 WORKDIR /build
-# Bring the populated local repository across so this stage resolves offline.
+# Reuse prefetched dependencies and let Maven fetch any missing artifacts.
 COPY --from=deps /root/.m2 /root/.m2
 COPY pom.xml ./
 COPY backend backend
 COPY webhook-simulator/pom.xml webhook-simulator/
-RUN mvn -B -o -pl backend -am package -DskipTests
+RUN mvn -B -pl backend -am package -DskipTests
 
 # Unpack the fat jar into its layers. Spring Boot's layertools separates
 # dependencies (which rarely change) from application classes (which change on

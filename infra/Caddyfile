@@ -1,0 +1,8 @@
+{$PUBLIC_HOST} {
+    handle /api/v1/* {
+        reverse_proxy api:8080
+    }
+    handle {
+        reverse_proxy frontend:3000
+    }
+}

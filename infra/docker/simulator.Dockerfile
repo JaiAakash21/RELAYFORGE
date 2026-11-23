@@ -13,7 +13,7 @@ COPY webhook-simulator/pom.xml webhook-simulator/
 RUN mvn -B -pl webhook-simulator -am dependency:go-offline -DskipTests
 COPY webhook-simulator webhook-simulator
 COPY backend/pom.xml backend/
-RUN mvn -B -o -pl webhook-simulator -am package -DskipTests
+RUN mvn -B -pl webhook-simulator -am package -DskipTests
 
 FROM eclipse-temurin:21-jre-jammy AS runtime
 RUN apt-get update \

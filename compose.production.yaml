@@ -1,0 +1,52 @@
+name: relayforge-production
+
+x-production-env: &production-env
+  RELAYFORGE_EGRESS_PROFILE: prod
+  RELAYFORGE_EGRESS_DEV_ALLOWLIST: ""
+  RELAYFORGE_CORS_ORIGINS: https://${PUBLIC_HOST:?set PUBLIC_HOST to your DNS hostname}
+  RELAYFORGE_DEMO_SEED_ENABLED: "false"
+
+services:
+  postgres:
+    ports: !reset []
+  redis:
+    ports: !reset []
+  kafka:
+    ports: !reset []
+  api:
+    environment: *production-env
+    ports: !reset []
+  worker:
+    environment: *production-env
+  frontend:
+    build:
+      args:
+        NEXT_PUBLIC_SITE_URL: https://${PUBLIC_HOST:?set PUBLIC_HOST}
+    ports: !reset []
+  grafana:
+    ports: !reset []
+  prometheus:
+    ports: !reset []
+  gateway:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      PUBLIC_HOST: ${PUBLIC_HOST:?set PUBLIC_HOST}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./infra/Caddyfile:/etc/caddy/Caddyfile:ro
+      - gateway-data:/data
+      - gateway-config:/config
+    depends_on:
+      - frontend
+      - api
+
+volumes:
+  gateway-data:
+  gateway-config:
+
+networks:
+  default:
+    name: relayforge-production

@@ -29,6 +29,7 @@ ENV NEXT_PUBLIC_SITE_URL=$NEXT_PUBLIC_SITE_URL \
     NEXT_TELEMETRY_DISABLED=1
 
 RUN npm run build
+RUN mkdir -p /app/public
 
 FROM node:22-alpine AS runtime
 WORKDIR /app

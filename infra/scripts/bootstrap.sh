@@ -14,6 +14,15 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 ENV_FILE="$REPO_ROOT/.env"
 
+umask 077
+mkdir -p "$REPO_ROOT/secrets"
+if [[ ! -s "$REPO_ROOT/secrets/metrics-token" ]]; then
+  openssl rand -hex 32 > "$REPO_ROOT/secrets/metrics-token"
+fi
+# Compose file secrets are bind mounts. The service UIDs differ; protect the
+# host directory and let each container read the one mounted file.
+chmod 700 "$REPO_ROOT/secrets"
+chmod 444 "$REPO_ROOT/secrets/metrics-token"
 if [[ -f "$ENV_FILE" ]]; then
   echo "A .env already exists at $ENV_FILE"
   echo "Delete it yourself if you want fresh secrets — this script will not"

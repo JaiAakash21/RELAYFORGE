@@ -4,7 +4,11 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.relayforge.common.ApiError;
 import com.relayforge.security.AuthenticationFilter;
 import jakarta.servlet.http.HttpServletResponse;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.List;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.authorization.AuthorizationDecision;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpHeaders;
@@ -51,7 +55,8 @@ public class SecurityConfig {
             HttpSecurity http,
             AuthenticationFilter authenticationFilter,
             ObjectMapper objectMapper,
-            CorsConfigurationSource corsConfigurationSource)
+            CorsConfigurationSource corsConfigurationSource,
+            @Value("${relayforge.metrics.token:}") String metricsToken)
             throws Exception {
 
         http
@@ -105,6 +110,14 @@ public class SecurityConfig {
                                                 "/actuator/health/**",
                                                 "/actuator/info")
                                         .permitAll()
+                                        .requestMatchers(HttpMethod.GET, "/actuator/prometheus")
+                                        .access((authentication, context) -> {
+                                            String supplied = context.getRequest().getHeader("X-Metrics-Token");
+                                            return new AuthorizationDecision(!metricsToken.isBlank()
+                                                    && supplied != null
+                                                    && MessageDigest.isEqual(metricsToken.getBytes(StandardCharsets.UTF_8),
+                                                            supplied.getBytes(StandardCharsets.UTF_8)));
+                                        })
                                         // API documentation is public so an
                                         // integrator can read the contract before
                                         // they have a key.

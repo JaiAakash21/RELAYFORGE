@@ -24,6 +24,7 @@ name: relayforge
 # ---------------------------------------------------------------------------
 x-backend-env: &backend-env
   SPRING_PROFILES_ACTIVE: docker
+  SPRING_CONFIG_IMPORT: optional:configtree:/run/secrets/
   POSTGRES_HOST: postgres
   POSTGRES_PORT: "5432"
   POSTGRES_DB: ${POSTGRES_DB:-relayforge}
@@ -140,6 +141,9 @@ services:
 
   # ----------------------------------------------------------------- API
   api:
+    secrets:
+      - source: metrics_token
+        target: relayforge.metrics.token
     build: *backend-build
     image: relayforge/backend:local
     restart: unless-stopped
@@ -162,6 +166,9 @@ services:
 
   # -------------------------------------------------------------- Worker
   worker:
+    secrets:
+      - source: metrics_token
+        target: relayforge.metrics.token
     build: *backend-build
     image: relayforge/backend:local
     restart: unless-stopped
@@ -225,6 +232,9 @@ services:
 
   # ----------------------------------------------------------- Prometheus
   prometheus:
+    secrets:
+      - source: metrics_token
+        target: relayforge.metrics.token
     image: prom/prometheus:v3.1.0
     restart: unless-stopped
     command:
@@ -278,6 +288,10 @@ services:
       - prometheus
       - tempo
     logging: *logging
+
+secrets:
+  metrics_token:
+    file: ./secrets/metrics-token
 
 volumes:
   postgres-data:

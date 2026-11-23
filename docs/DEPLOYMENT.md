@@ -19,6 +19,38 @@ The compose file refuses to start without `POSTGRES_PASSWORD`,
 `GRAFANA_ADMIN_PASSWORD`, with a message naming the variable and how to
 generate it.
 
+## Single-host HTTPS deployment
+
+Use a dedicated Linux VM with Docker Engine and Compose v2.24.4 or later.
+Point a public DNS hostname at the VM and allow inbound HTTP and HTTPS. Limit
+SSH to administrators. Apply outbound network controls for webhook workers,
+including blocking access to the cloud instance metadata service and private
+infrastructure. Review available disk, backups and recovery before accepting
+live events.
+
+From a fresh checkout, run:
+
+```sh
+./infra/scripts/bootstrap.sh
+# Replace with the hostname whose DNS points to this VM.
+export PUBLIC_HOST=relayforge.example.org
+docker compose -f docker-compose.yml -f compose.production.yaml config --quiet
+docker compose -f docker-compose.yml -f compose.production.yaml build api frontend webhook-simulator
+docker compose -f docker-compose.yml -f compose.production.yaml up -d --no-build --wait
+```
+
+Persist PUBLIC_HOST in the host's .env for subsequent operations. The gateway
+obtains a TLS certificate and routes the dashboard and /api/v1/ requests.
+PostgreSQL initializes on a fresh persistent volume and Flyway applies the
+schema. The overlay keeps the database, broker, cache, and monitoring ports
+private. Use independent production secrets and encrypted off-host database
+backups. Persist the encryption key alongside the recovery procedure.
+
+The built-in Playground uses an internal HTTP receiver intended for the local
+development profile. Test production delivery with an HTTPS receiver you
+control. Confirm certificate issuance, receiver signature verification,
+database persistence and backup restoration on the actual host.
+
 ## Running without Docker
 
 Useful for development, and what was used to verify this project.

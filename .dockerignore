@@ -8,6 +8,7 @@
 
 # Secrets must never enter the build context — anything here is readable in the
 # image's layers even if a later step deletes it.
+secrets/
 .env
 .env.*
 !.env.example
