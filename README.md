@@ -19,6 +19,45 @@ Prometheus · Grafana · OpenTelemetry · Docker
 
 ---
 
+## Project at a glance
+
+RelayForge is a multi-tenant webhook delivery platform built to demonstrate
+how a backend handles failures after accepting an event. It pairs a Java and
+Spring Boot API with PostgreSQL, Kafka, Redis, and a Next.js dashboard.
+
+| Engineering decision | What it demonstrates |
+|---|---|
+| Transactional outbox | An accepted event and its delivery jobs are committed together. Workers can recover when Kafka is temporarily unavailable. |
+| Worker leases and retry scheduling | A crashed worker cannot strand a delivery. Retryable failures use exponential backoff with jitter, and HTTP 429 can specify a delay. |
+| Webhook signing and tenant isolation | Requests carry an HMAC signature and a stable event ID. Credentials and delivery history are scoped to an organization. |
+| Dead letters and replay | Operators can inspect individual attempts, then replay a failed delivery with its history preserved. |
+
+**Verified:** 180 Java unit tests, 33 container integration tests, and 21 browser
+tests. All seven Reliability Playground scenarios reached their expected
+outcomes in the AWS demo. These results describe tested behavior under controlled
+conditions. See [testing](docs/TESTING.md) for coverage and [architecture](docs/ARCHITECTURE.md)
+for the design.
+
+### 90-second walkthrough
+
+1. Open the demo, register, and select **Reliability Playground**.
+2. Pick **Transient 500s, then recovery**. Set the receiver to fail twice and
+   publish a test event.
+3. Inspect the resulting timeline. Look for two HTTP 500 responses, a longer
+   gap before the second retry, and an HTTP 200 on the third attempt.
+4. For the failure path, run **Permanently broken receiver** with an attempt
+   budget of two. Open **Dead letters** to see how replay preserves history.
+
+For an interview, explain the transaction boundary, the tradeoff behind
+at-least-once delivery, and how you verified recovery with the simulator's
+independent request counters. See the [interview guide](docs/INTERVIEW_PREPARATION.md)
+and [engineering decisions](docs/ENGINEERING_DECISIONS.md).
+
+**Résumé bullet:** Built and deployed a multi-tenant webhook delivery platform
+on AWS using Java, Spring Boot, PostgreSQL, and Kafka, with a transactional
+outbox, signed deliveries, and auditable retries and replay. Validated delivery
+and recovery with 213 backend tests and 21 browser tests.
+
 ## The problem
 
 A webhook pipeline loses events in four characteristic ways. RelayForge is
