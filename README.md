@@ -208,6 +208,8 @@ Why each decision was made, and what it cost:
 - AES-256-GCM encryption of signing secrets at rest
 - SSRF policy validating every resolved address, with a pinned DNS resolver so
   the HTTP client cannot connect anywhere that was not validated
+- Concurrent deliveries to one hostname retain that validated DNS pin until
+  the last in-flight delivery finishes
 - BCrypt passwords; SHA-256 for full-entropy machine credentials
 - Tokens in httpOnly cookies; refresh-token rotation with reuse detection
 - Redis token-bucket rate limiting via an atomic Lua script

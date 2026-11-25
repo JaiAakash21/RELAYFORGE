@@ -28,11 +28,9 @@ import org.apache.hc.client5.http.DnsResolver;
  *
  * <h2>Scope and lifetime</h2>
  *
- * A pin is registered immediately before a request and removed immediately
- * after, in a {@code finally} block, so the map holds only in-flight requests
- * and never becomes a stale address cache. The pin is per hostname; concurrent
- * attempts to the same host share it, which is correct because the validated
- * address set for a host is the same regardless of which delivery needs it.
+ * A pin is registered immediately before a request and released in a
+ * {@code finally} block. Concurrent requests to one host retain the pin until
+ * the last request finishes.
  *
  * <p>A hostname that was never pinned is refused rather than resolved. Failing
  * closed means a future code path that forgets to validate cannot quietly fall
@@ -40,22 +38,34 @@ import org.apache.hc.client5.http.DnsResolver;
  */
 public class PinnedDnsResolver implements DnsResolver {
 
-    private final Map<String, List<InetAddress>> pins = new ConcurrentHashMap<>();
+    private final Map<String, Pin> pins = new ConcurrentHashMap<>();
+
+    private record Pin(List<InetAddress> addresses, int users) {}
 
     /** Registers the approved addresses for a hostname. */
     public void pin(String host, List<InetAddress> addresses) {
-        pins.put(normalise(host), List.copyOf(addresses));
+        pins.compute(
+                normalise(host),
+                (key, current) ->
+                        current == null
+                                ? new Pin(List.copyOf(addresses), 1)
+                                : new Pin(current.addresses(), current.users() + 1));
     }
 
     /** Removes a pin. Always called from a {@code finally} block. */
     public void unpin(String host) {
-        pins.remove(normalise(host));
+        pins.computeIfPresent(
+                normalise(host),
+                (key, current) ->
+                        current.users() == 1
+                                ? null
+                                : new Pin(current.addresses(), current.users() - 1));
     }
 
     @Override
     public InetAddress[] resolve(String host) throws UnknownHostException {
-        List<InetAddress> pinned = pins.get(normalise(host));
-        if (pinned == null || pinned.isEmpty()) {
+        Pin pin = pins.get(normalise(host));
+        if (pin == null || pin.addresses().isEmpty()) {
             // Fail closed. See the class comment.
             throw new UnknownHostException(
                     "No validated address is pinned for '"
@@ -63,7 +73,7 @@ public class PinnedDnsResolver implements DnsResolver {
                             + "'. Outbound requests must go through DestinationPolicy.validate()"
                             + " before being issued.");
         }
-        return pinned.toArray(InetAddress[]::new);
+        return pin.addresses().toArray(InetAddress[]::new);
     }
 
     @Override
